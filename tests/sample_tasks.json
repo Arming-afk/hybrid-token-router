@@ -1,0 +1,12 @@
+[
+  {"task_id": "t1", "prompt": "Explain how a hash table achieves average O(1) lookup."},
+  {"task_id": "t2", "prompt": "A laptop costs $1,200 and is discounted 15%, then a 7% tax is added. Calculate the final price."},
+  {"task_id": "t3", "prompt": "Classify the sentiment of this review and justify: 'Setup took five minutes and it has run flawlessly since.'"},
+  {"task_id": "t4", "prompt": "Summarize the following in one sentence: The city council voted on Tuesday to expand the bike lane network by 40 kilometres over the next two years, citing a 30 percent rise in cycling commuters since 2024 and pressure from residents to reduce downtown congestion."},
+  {"task_id": "t5", "prompt": "Extract all named entities (person, organization, location, date) from: On 14 February, Elena Ruiz of Nordwind AG presented in Oslo."},
+  {"task_id": "t6", "prompt": "This function should return the largest number in a list but is broken. Fix it:\ndef largest(xs):\n    best = 0\n    for x in xs:\n        if x < best:\n            best = x\n    return best"},
+  {"task_id": "t7", "prompt": "Three colleagues sit in a row. Priya is not on the left end. Marco is directly right of Priya. Jonas is not in the middle. Who sits where?"},
+  {"task_id": "t8", "prompt": "Write a Python function slugify(title) that lowercases a string, replaces spaces with hyphens, and strips punctuation."},
+  {"task_id": "t9", "prompt": "How many seconds are in a 30-day month?"},
+  {"task_id": "t10", "prompt": "Identify the people and locations mentioned in: Amara Okafor toured the flood defences in Rotterdam with Mayor Jansen."}
+]
