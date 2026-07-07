@@ -1,0 +1,12 @@
+[
+  {"prompt": "Tom is older than Sara. Sara is older than Bill. Who is the youngest?", "expected": "Bill"},
+  {"prompt": "If all roses are flowers and all flowers need water, do all roses need water?", "expected": "Yes"},
+  {"prompt": "A is heavier than B. C is lighter than B. Who is the heaviest?", "expected": "A"},
+  {"prompt": "In a race, Maya finished ahead of Noah, and Noah finished ahead of Omar. Who came last?", "expected": "Omar"},
+  {"prompt": "There are three boxes: red, green, blue. The red box is to the left of the green box, and the green box is to the left of the blue box. Which box is in the middle?", "expected": "The green box"},
+  {"prompt": "Anna always tells the truth. Anna says Ben is lying. Is Ben telling the truth?", "expected": "No, Ben is lying"},
+  {"prompt": "Four friends each ordered a different drink: tea, coffee, juice, water. Kim did not order tea or coffee. Kim did not order juice. What did Kim order?", "expected": "Water"},
+  {"prompt": "If it is raining then the ground is wet. The ground is not wet. Is it raining?", "expected": "No, it is not raining"},
+  {"prompt": "Five people sit in a row. Priya is in the middle seat. Who sits in seat 3 of 5?", "expected": "Priya"},
+  {"prompt": "No fish are mammals. All whales are mammals. Are any whales fish?", "expected": "No"}
+]

@@ -1,0 +1,12 @@
+[
+  {"prompt": "What is the chemical symbol for gold?", "expected": "Au"},
+  {"prompt": "Which organ in the human body produces insulin?", "expected": "The pancreas"},
+  {"prompt": "Who developed the theory of general relativity?", "expected": "Albert Einstein"},
+  {"prompt": "What is the largest planet in our solar system?", "expected": "Jupiter"},
+  {"prompt": "In which year did the first humans land on the Moon?", "expected": "1969 (Apollo 11)"},
+  {"prompt": "What gas do plants primarily absorb from the atmosphere for photosynthesis?", "expected": "Carbon dioxide (CO2)"},
+  {"prompt": "What is the capital city of Canada?", "expected": "Ottawa"},
+  {"prompt": "Which language has the most native speakers in the world?", "expected": "Mandarin Chinese"},
+  {"prompt": "What is the hardest known naturally occurring material?", "expected": "Diamond"},
+  {"prompt": "What data structure uses last-in, first-out (LIFO) ordering?", "expected": "A stack"}
+]

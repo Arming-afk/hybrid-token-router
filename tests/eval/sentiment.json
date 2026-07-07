@@ -1,0 +1,12 @@
+[
+  {"prompt": "Classify the sentiment and justify briefly: 'This is the best purchase I have made all year!'", "expected": "Positive, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'The product arrived broken and support ignored my emails.'", "expected": "Negative, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'It is okay, does the job, nothing special.'", "expected": "Neutral, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'I absolutely love how fast this laptop is.'", "expected": "Positive, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'Waited two weeks and it still has not shipped. So frustrating.'", "expected": "Negative, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'Five stars, would recommend to everyone.'", "expected": "Positive, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'Meh. Overpriced for what you actually get.'", "expected": "Negative, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'The quarterly report will be released on Thursday.'", "expected": "Neutral, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'Terrible experience, I am never buying from them again.'", "expected": "Negative, with a short justification"},
+  {"prompt": "Classify the sentiment and justify briefly: 'The interface is beautiful and setup was effortless.'", "expected": "Positive, with a short justification"}
+]
