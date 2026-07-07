@@ -59,6 +59,17 @@ def test_all_reasoning_does_not_crash():
     assert t["LARGE"].endswith("70b")
 
 
+def test_track1_launch_day_models():
+    # The actual Track 1 ALLOWED_MODELS. Two big MoEs (minimax, kimi) have no parseable
+    # size and fall back to "large"; the code must still tier sensibly.
+    t = tiers("minimax-m3,kimi-k2p7-code,gemma-4-31b-it,gemma-4-26b-a4b-it,gemma-4-31b-it-nvfp4")
+    assert t["SMALL"] == "gemma-4-26b-a4b-it"          # 4B active params -> cheapest
+    assert t["MEDIUM"] == "gemma-4-31b-it"             # full precision, NOT the -nvfp4 build
+    assert t["LARGE"] in ("minimax-m3", "kimi-k2p7-code")  # a large MoE for the retry tier
+    # Neither gemma-31b size parse nor quantization must land nvfp4 in an accuracy tier.
+    assert "nvfp4" not in t["MEDIUM"]
+
+
 def test_reasoning_detection_patterns():
     for ident in ["deepseek-r1", "qwen-qwq-32b", "some-thinking-model", "acc/o1-mini"]:
         assert models._is_reasoning(ident), ident
