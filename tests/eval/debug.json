@@ -1,0 +1,12 @@
+[
+  {"prompt": "This function should return the sum of a list but always returns 0. Fix it:\ndef total(xs):\n    s = 0\n    for x in xs:\n        s = x\n    return s", "expected": "Change 's = x' to 's += x' so it accumulates; total([1,2,3]) returns 6"},
+  {"prompt": "Fix the bug in this function so it adds two numbers:\nfunction add(a, b) { return a - b; }", "expected": "Return a + b instead of a - b"},
+  {"prompt": "This list comprehension should keep even numbers but keeps odd ones. Fix it:\nevens = [n for n in nums if n % 2]", "expected": "Condition should be 'n % 2 == 0' so it keeps even numbers"},
+  {"prompt": "Fix this function so it correctly reverses a string:\ndef rev(s):\n    return s", "expected": "Return s[::-1] (or an equivalent reversal)"},
+  {"prompt": "There is an off-by-one error. Provide the corrected loop:\nfor (let i = 0; i <= arr.length; i++) { console.log(arr[i]); }", "expected": "Use i < arr.length (strict less-than) to avoid indexing out of bounds"},
+  {"prompt": "This crashes on empty input. Make it return None instead:\ndef first(names):\n    return names[0]", "expected": "Guard the empty case, e.g. return names[0] if names else None"},
+  {"prompt": "This should compute the average but raises ZeroDivisionError on an empty list. Fix it:\ndef avg(xs):\n    return sum(xs) / len(xs)", "expected": "Handle len(xs) == 0, e.g. return 0 (or None) when the list is empty"},
+  {"prompt": "The counter never increments correctly. Fix the bug:\ncount = 0\nfor c in text:\n    if c == 'a':\n        count == count + 1\nreturn count", "expected": "Use assignment 'count = count + 1' (or count += 1), not the comparison '=='"},
+  {"prompt": "This factorial function returns None. Fix it:\ndef fact(n):\n    if n == 0:\n        return 1\n    fact(n - 1) * n", "expected": "Add 'return' before fact(n - 1) * n"},
+  {"prompt": "The dictionary lookup throws KeyError for missing keys. Make it return 0 instead:\ndef get_count(d, k):\n    return d[k]", "expected": "Use d.get(k, 0) so missing keys return 0"}
+]

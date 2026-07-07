@@ -1,0 +1,12 @@
+[
+  {"prompt": "A shirt costs $50 and is discounted by 20%. What is the sale price?", "expected": "$40"},
+  {"prompt": "What is 25% of 320?", "expected": "80"},
+  {"prompt": "A car travels 240 km in 3 hours. What is its average speed in km/h?", "expected": "80 km/h"},
+  {"prompt": "If 5 pencils cost $2.00, how much do 8 pencils cost at the same rate?", "expected": "$3.20"},
+  {"prompt": "A rectangle is 12 m long and 4 m wide. What is its area?", "expected": "48 square meters"},
+  {"prompt": "What is 7 factorial (7!)?", "expected": "5040"},
+  {"prompt": "A population of 1,000 grows 10% per year. What is it after 2 years?", "expected": "1210"},
+  {"prompt": "Sarah had $80, spent $34, then earned $15. How much does she have now?", "expected": "$61"},
+  {"prompt": "What is the compound interest earned on $2,000 at 5% per year for 2 years, compounded annually?", "expected": "$205 (final balance $2,205)"},
+  {"prompt": "The average of four numbers is 15. Three of them are 10, 20, and 12. What is the fourth?", "expected": "18"}
+]

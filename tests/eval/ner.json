@@ -1,0 +1,12 @@
+[
+  {"prompt": "Extract the named entities (person, organization, location, date): Barack Obama visited Berlin in July 2008.", "expected": "PERSON: Barack Obama; LOCATION: Berlin; DATE: July 2008"},
+  {"prompt": "Extract the named entities (person, organization, location, date): Apple opened a new store in Sydney on 5 October.", "expected": "ORG: Apple; LOCATION: Sydney; DATE: 5 October"},
+  {"prompt": "Extract the named entities (person, organization, location, date): Dr. Maria Silva of the WHO spoke in Geneva last Monday.", "expected": "PERSON: Maria Silva; ORG: WHO; LOCATION: Geneva"},
+  {"prompt": "Extract the named entities (person, organization, location, date): Toyota and Honda both reported earnings in Tokyo on March 3, 2023.", "expected": "ORG: Toyota, Honda; LOCATION: Tokyo; DATE: March 3, 2023"},
+  {"prompt": "Extract the named entities (person, organization, location, date): Elena Ruiz joined Google after leaving Microsoft in 2021.", "expected": "PERSON: Elena Ruiz; ORG: Google, Microsoft; DATE: 2021"},
+  {"prompt": "Extract the named entities (person, organization, location, date): The summit was held in Paris, France, and hosted by the United Nations.", "expected": "LOCATION: Paris, France; ORG: United Nations"},
+  {"prompt": "Extract the named entities (person, organization, location, date): Jeff Bezos founded Amazon in Seattle in 1994.", "expected": "PERSON: Jeff Bezos; ORG: Amazon; LOCATION: Seattle; DATE: 1994"},
+  {"prompt": "Extract the named entities (person, organization, location, date): On Friday, Nairobi hosted delegates from the African Union.", "expected": "DATE: Friday; LOCATION: Nairobi; ORG: African Union"},
+  {"prompt": "Extract the named entities (person, organization, location, date): Serena Williams trained in Florida before the tournament in London.", "expected": "PERSON: Serena Williams; LOCATION: Florida, London"},
+  {"prompt": "Extract the named entities (person, organization, location, date): NASA launched the probe from Cape Canaveral on 16 November 2022.", "expected": "ORG: NASA; LOCATION: Cape Canaveral; DATE: 16 November 2022"}
+]
