@@ -1,1 +1,2 @@
-openai>=1.40,<3
+# Pinned to the version validated locally, so the submission image behaves identically.
+openai==2.44.0
