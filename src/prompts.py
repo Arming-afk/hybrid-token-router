@@ -6,6 +6,8 @@ and every tier bump must be justified by a failed eval at the cheaper tier.
 
 SPEC = {
     "factual": {
+        # TODO(person2): eval SMALL vs MEDIUM on real gemma — dropping to SMALL is the
+        # biggest token saving but a real accuracy risk. Kept at MEDIUM until measured.
         "tier": "MEDIUM",
         "max_tokens": 200,
         "instruction": "Answer accurately in at most 3 sentences.",

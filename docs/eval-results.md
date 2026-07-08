@@ -3,6 +3,40 @@
 This file records the numbers behind every value in `src/prompts.py` `SPEC`. Nothing in
 `SPEC` should be changed without a row here justifying it.
 
+## Status (2026-07-08): local eval is BLOCKED — no access to the real Track 1 models
+
+Per the participant guide, `FIREWORKS_API_KEY`, `FIREWORKS_BASE_URL`, and `ALLOWED_MODELS`
+are **injected by the harness only at evaluation time** ("provided by the harness — use
+this key, not your own"). We verified with a personal Fireworks key that:
+
+- The pipeline is correct: a raw call returns HTTP 200 with real `usage`, confirming
+  `client.py`, the base URL, and the `accounts/fireworks/models/<id>` ID format all work.
+- **The personal key cannot reach the real Track 1 models.** `models.list()` returns only
+  unrelated models (`gpt-oss-120b`, `kimi-k2p6`, `glm-5p1`, `deepseek-v4-pro`, …) — none of
+  `gemma-4-*`, `minimax-m3`, `kimi-k2p7-code`.
+- Every model the personal key *can* reach is a **reasoning model** (returns
+  `reasoning_content`; with a tight `max_tokens` it spends the whole budget thinking and
+  emits empty `content`) and the account is rate-limited (429s even on spaced calls). These
+  are the *opposite* profile of the real gemma `-it` tiers, so their numbers are not just
+  imprecise — they are misleading and must not drive `SPEC`.
+
+**Conclusion:** `scripts/eval_matrix.py` cannot produce trustworthy numbers before the
+harness runs. Strategy is therefore **validate the pipeline (done) + hand-tune `SPEC` from
+public model facts**, and defer measured tuning to real harness submissions (10/hour).
+
+### What we know about the real tiers (basis for hand-tuning)
+- **SMALL `gemma-4-26b-a4b-it`** — 26B MoE, 4B active. Instruction-tuned (`-it`), *not* a
+  reasoning model → answers land directly in `content`, so tight `max_tokens` is safe.
+- **MEDIUM `gemma-4-31b-it`** — 31B dense, instruction-tuned, non-reasoning.
+- **LARGE `minimax-m3`** — unknown size; reasoning status UNVERIFIED (see follow-ups).
+- **`kimi-k2p7-code`** — code-specialized, unused by the 3-tier scheme.
+
+### Decisions deferred to a real eval (do NOT guess these blind)
+- `factual`: currently MEDIUM. Biggest token-saving opportunity is dropping to SMALL, but
+  it's a genuine accuracy risk — needs a real gemma eval. Left at MEDIUM (safe) with a TODO.
+- `math` / `logic`: kept at MEDIUM (SMALL 4B-active most likely to fail multi-step here).
+- `debug` / `codegen`: whether `kimi-k2p7-code` beats `gemma-4-31b-it` on cost/accuracy.
+
 ## Method
 
 `scripts/eval_matrix.py` runs each category's eval set (`tests/eval/<category>.json`,
