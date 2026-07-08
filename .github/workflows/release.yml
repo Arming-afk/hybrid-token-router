@@ -1,0 +1,38 @@
+# Build the submission image and push it to GHCR, tagged with the git SHA.
+# Runs on every push to main and on manual dispatch. The pushed package starts
+# PRIVATE the first time; flip it to Public once in the package settings so the
+# contest harness can pull it.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  push-image:
+    runs-on: ubuntu-latest  # amd64 host, matches the required linux/amd64 image
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build and push (linux/amd64, tagged with git SHA)
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          IMG=ghcr.io/arming-afk/hybrid-token-router:$SHA
+          docker build --platform linux/amd64 -t "$IMG" .
+          docker push "$IMG" | tee push.log
+          DIGEST=$(grep -o 'sha256:[a-f0-9]*' push.log | tail -1)
+          {
+            echo "## Submission reference"
+            echo '```'
+            echo "$IMG"
+            echo '```'
+            echo "digest: \`$DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
