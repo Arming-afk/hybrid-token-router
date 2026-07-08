@@ -59,12 +59,15 @@ async def run(tasks: list[dict], results: dict) -> None:
     tiers = models.build_tiers()
     log("TIERS", **tiers)
     sem = asyncio.Semaphore(CONCURRENCY)
-    jobs = [solve_task(task, tiers, sem, results) for task in tasks]
+    jobs = [solve_task(task, tiers, sem, results) for task in tasks
+            if isinstance(task.get("prompt"), str) and task["prompt"].strip()]
     remaining = DEADLINE_SECONDS - (time.monotonic() - START)
     try:
         await asyncio.wait_for(asyncio.gather(*jobs, return_exceptions=True), timeout=remaining)
     except asyncio.TimeoutError:
         log("DEADLINE", note="deadline reached, writing partial results")
+    finally:
+        await client.aclose()
 
 
 def write_results(tasks: list[dict], results: dict) -> None:
@@ -78,7 +81,12 @@ def write_results(tasks: list[dict], results: dict) -> None:
 
 def main() -> None:
     with open(INPUT_PATH, encoding="utf-8") as f:
-        tasks = json.load(f)
+        raw = json.load(f)
+    # A malformed entry must never take down the run: drop anything without a task_id
+    # (nothing to key the answer on) and let promptless tasks fall through as "".
+    tasks = [t for t in raw if isinstance(t, dict) and t.get("task_id")]
+    if len(tasks) != len(raw):
+        log("SKIPPED", invalid_entries=len(raw) - len(tasks))
     results = {task["task_id"]: "" for task in tasks}
     try:
         asyncio.run(run(tasks, results))
