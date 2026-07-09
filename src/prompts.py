@@ -3,68 +3,76 @@
 This is the main tuning surface: every token in an instruction must earn its place,
 and every tier bump must be justified by a failed eval at the cheaper tier.
 
-Current values are the GATE-FIRST config after the first scored run failed the
-accuracy gate at 47.4% (2026-07-08): every category runs on MEDIUM (the largest
-non-reasoning model) with generous caps, because truncated or weak answers fail
-the judge outright and rank-by-tokens only exists after the gate is passed.
-Once a submission passes, walk categories back down (SMALL, tighter caps) one
-resubmission at a time and keep the cheapest config that still passes.
+Current values mirror the gate-PASSING config of the 2nd-place Track 1 entry
+(KaananeTaha/AMD-AI-Hackathon, analyzed 2026-07-09; full rationale in
+docs/eval-results.md): factual/math/logic on LARGE (minimax-m3, made safe by
+client.py's reasoning_effort="none"), debug/codegen on the CODE tier
+(kimi-k2p7-code), sentiment/summarization/ner on SMALL. factual doubles as the
+router's misroute default, so it deliberately sits on the strongest tier — any
+false positive lands on the most capable model instead of failing the gate.
+Their measured cost on the real harness models: ~150 tokens/task, all correct.
 """
-import re
+
+_BASE = "English only. Be concise; no preamble."
 
 SPEC = {
     "factual": {
-        "tier": "MEDIUM",
-        "max_tokens": 250,
-        "instruction": "Answer accurately in at most 3 sentences.",
+        "tier": "LARGE",
+        "max_tokens": 300,
+        "instruction": f"{_BASE} Explain clearly in under 120 words.",
     },
     "math": {
-        "tier": "MEDIUM",
-        "max_tokens": 450,
-        "instruction": (
-            'Show at most 3 brief calculation steps, then end with exactly: "Answer: <value>"'
-        ),
+        "tier": "LARGE",
+        "max_tokens": 400,
+        "instruction": f"{_BASE} Brief steps, then 'Answer: <value>' on its own line.",
     },
     "sentiment": {
-        "tier": "MEDIUM",
+        "tier": "SMALL",
         "max_tokens": 120,
-        "instruction": 'Reply: "<label> - <one short sentence of justification>"',
+        "instruction": (
+            f"{_BASE} Label the sentiment positive, negative, or neutral, then give "
+            f"one short justification."
+        ),
     },
     "summarization": {
-        "tier": "MEDIUM",
-        "max_tokens": 300,
+        "tier": "SMALL",
+        "max_tokens": 220,
         "instruction": (
-            "Follow the stated length/format constraint exactly. Output only the summary."
+            f"{_BASE} Output only the summary; obey any stated length or format "
+            f"constraint."
         ),
     },
     "ner": {
-        "tier": "MEDIUM",
-        "max_tokens": 300,
+        "tier": "SMALL",
+        "max_tokens": 260,
         "instruction": (
-            "List one entity per line as: <entity> | <PERSON|ORG|LOCATION|DATE>\n"
-            "No other text."
+            f"{_BASE} List each entity as 'label: value', one per line; labels: "
+            f"person, organization, location, date."
         ),
     },
     "debug": {
-        "tier": "MEDIUM",
-        "max_tokens": 800,
+        "tier": "CODE",
+        "max_tokens": 520,
         "instruction": (
-            "State the bug in one sentence, then give the full corrected code in one "
-            "code block. No other explanation."
+            f"{_BASE} Name the bug in one sentence, then give the corrected code in "
+            f"one fenced block."
         ),
     },
     "logic": {
-        "tier": "MEDIUM",
-        "max_tokens": 500,
+        "tier": "LARGE",
+        "max_tokens": 420,
         "instruction": (
-            "Work through the constraints in at most 5 short lines, then end with "
-            'exactly: "Answer: <solution>"'
+            f"{_BASE} Deduce in brief numbered steps checking every constraint, then "
+            f"'Answer: <value>' on its own line."
         ),
     },
     "codegen": {
-        "tier": "MEDIUM",
-        "max_tokens": 800,
-        "instruction": "Output only the code in one code block. No explanation before or after.",
+        "tier": "CODE",
+        "max_tokens": 520,
+        "instruction": (
+            f"{_BASE} Output only the code in one fenced block, correct and "
+            f"self-contained."
+        ),
     },
 }
 
@@ -72,22 +80,19 @@ CATEGORIES = list(SPEC)
 
 
 def render(category: str, prompt: str) -> tuple[list[dict], int, str]:
+    # Instruction as a system message, task as the user message — the exact message
+    # shape the gate-passing reference ran through this proxy and these models.
     spec = SPEC[category]
-    messages = [{"role": "user", "content": f"{prompt}\n\n{spec['instruction']}"}]
+    messages = [
+        {"role": "system", "content": spec["instruction"]},
+        {"role": "user", "content": prompt},
+    ]
     return messages, spec["max_tokens"], spec["tier"]
 
 
-_ANSWER_MARKER = re.compile(r"answer\s*:", re.I)
-
-
 def postprocess(category: str, text: str) -> str:
-    # math/logic answers end with "Answer: X"; hand the judge just the final answer.
-    # Matched case-insensitively since models don't always follow the exact casing
-    # asked for in the instruction.
-    if category in ("math", "logic"):
-        matches = list(_ANSWER_MARKER.finditer(text))
-        if matches:
-            answer = text[matches[-1].end():].strip()
-            if answer:
-                return answer
+    # The judge scores the full answer as-is: the reference entry passed the gate
+    # handing over "brief steps + Answer: <value>" untouched, so the old stripping
+    # to the text after "Answer:" only added risk. Kept as the single seam where
+    # any future output rewriting would go (category is part of that interface).
     return text.strip()

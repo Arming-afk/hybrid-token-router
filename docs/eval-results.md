@@ -41,6 +41,7 @@ The harness gives one number per submission — treat each run as one eval data 
 | 2 | `bcf1e8f` | pre-PR#9 router + math/logic MEDIUM, caps raised, 429 handling | **68.4%** | gate FAILED |
 | 3 | `4d5e32b` | PR #9 router widening + math/logic → LARGE (minimax-m3, 2000-tok cap) | **57.9%** | gate FAILED, regression |
 | 4 | `215e22a` | PR #9 router widening (kept) + math/logic reverted to MEDIUM | **63.2%** | gate FAILED, partial recovery |
+| 5 | _(next)_ | 2nd-place proven config: LARGE+`reasoning_effort=none` for factual/math/logic, CODE tier for debug/codegen, SMALL for the rest, 25s timeout, no stripping | | |
 
 Readings: 47.4% ≈ 9/19, 68.4% ≈ 13/19, 57.9% ≈ 11/19, 63.2% ≈ 12/19 — judge set is ~19 tasks.
 
@@ -84,19 +85,53 @@ Fix (`src/client.py`, branch `fix/client-timeout-reasoning-effort`, rebased onto
 - Covered by `tests/test_client.py` (5 cases, stubbed SDK, no network) — all green, plus the
   full existing gate suite (router 99.4%/0%, models 9/9, prompts, main 8/8) still passes.
 
-This fix is orthogonal to the router question and should be pushed on top of `215e22a`
-regardless of how the router false-positive investigation goes — it doesn't reopen the
-LARGE-tier question, just removes two concrete bugs (hard-rule violation + blank-answer
-mechanism). Reopening math/logic→LARGE with the reasoning_effort fix applied is a separate,
-later experiment once the router false positive is found and fixed.
+### Adopting the 2nd-place gate-PASSING config (2026-07-09, run 5 candidate)
 
-Token cost is deliberately ignored until the gate passes.
+The public reference repo compared above (`KaananeTaha/AMD-AI-Hackathon`) turned out to be
+the **2nd-place Track 1 entry** (confirmed by the team 2026-07-09). Its config therefore
+*passed the accuracy gate* — every value in it is stronger evidence than anything we can
+measure locally (the gemma tiers remain unreachable outside the judges' proxy). It also
+directly answers all three questions this file had deferred:
 
-### Decisions deferred to a real eval (do NOT guess these blind)
-- `factual`: currently MEDIUM. Biggest token-saving opportunity is dropping to SMALL, but
-  it's a genuine accuracy risk — needs a real gemma eval. Left at MEDIUM (safe) with a TODO.
-- `math` / `logic`: kept at MEDIUM (SMALL 4B-active most likely to fail multi-step here).
-- `debug` / `codegen`: whether `kimi-k2p7-code` beats `gemma-4-31b-it` on cost/accuracy.
+| question | their proven answer |
+|---|---|
+| (a) math/logic: MEDIUM vs LARGE | **LARGE `minimax-m3` — but only with `reasoning_effort="none"`** (without it: blank answers, which is what sank our run 3) |
+| (b) sentiment/NER/summarization on SMALL | **yes, SMALL holds** (`gemma-4-26b-a4b-it`) |
+| (c) factual on SMALL | **no — they run factual on the strongest model**, deliberately: factual is the router's misroute default, so any false positive lands on the most capable model (gate insurance) |
+
+Their measured cost on the real harness models: 8 practice tasks ≈ 1220 tokens (~150/task),
+all correct — that's also the token-efficiency bar once the gate passes.
+
+Changes adopted (branch `fix/client-timeout-reasoning-effort`, on top of the client.py fix):
+- `models.py`: new **CODE tier** — code-specialized ids (`code`/`coder`) are excluded from
+  the general tiers and serve debug/codegen; falls back to MEDIUM if no code model exists.
+  Side benefit: LARGE was previously an env-order-dependent tie between two unsized MoEs
+  (`minimax-m3` vs `kimi-k2p7-code`); it is now deterministically `minimax-m3`.
+- `prompts.py` SPEC — the reference's category→tier/caps verbatim:
+
+| category | tier (model) | max_tokens (was) |
+|---|---|---|
+| factual | LARGE minimax-m3 | 300 (250, MEDIUM) |
+| math | LARGE minimax-m3 | 400 (450, MEDIUM) |
+| logic | LARGE minimax-m3 | 420 (500, MEDIUM) |
+| debug | CODE kimi-k2p7-code | 520 (800, MEDIUM) |
+| codegen | CODE kimi-k2p7-code | 520 (800, MEDIUM) |
+| sentiment | SMALL gemma-4-26b-a4b-it | 120 (120, MEDIUM) |
+| summarization | SMALL gemma-4-26b-a4b-it | 220 (300, MEDIUM) |
+| ner | SMALL gemma-4-26b-a4b-it | 260 (300, MEDIUM) |
+
+- Instructions rewritten to their proven wording, with the shared base
+  "English only. Be concise; no preamble." (the guide's all-tracks rule requires English
+  responses; ours never said so). Delivered as a **system message** (their exact shape).
+- **`postprocess()` stripping dropped**: they passed the gate handing the judge the full
+  "brief steps + Answer: <value>" text untouched; stripping only added risk.
+- `main.py` writes **`/output/inference_log.json`** (calls + token totals, best-effort).
+  The guide's "No inference log is required for Track 2" phrasing implies Track 1 expects
+  one; the reference writes it too.
+
+Known open risk this does NOT address: PR #9's router widening still costs ~1 task
+(run 2 vs 4). Mitigated here by the factual-on-LARGE misroute-insurance design; finding
+the specific false-positive pattern in `router.py` remains open for the router owner.
 
 ## Method
 
@@ -134,11 +169,21 @@ _Not yet run — needs FIREWORKS_BASE_URL. Run the command above to populate thi
 
 ## Decisions log
 
-Fill one row per `SPEC` field once the table above exists. Example shape:
-
 | category | chosen tier | chosen max_tokens | few-shot? | evidence |
 |---|---|---|---|---|
-| _pending_ | | | | |
+| factual | LARGE | 300 | no | 2nd-place gate pass; misroute-default insurance |
+| math | LARGE | 400 | no | 2nd-place gate pass (with `reasoning_effort="none"`) |
+| logic | LARGE | 420 | no | 2nd-place gate pass (with `reasoning_effort="none"`) |
+| debug | CODE | 520 | no | 2nd-place gate pass on `kimi-k2p7-code` |
+| codegen | CODE | 520 | no | 2nd-place gate pass on `kimi-k2p7-code` |
+| sentiment | SMALL | 120 | no | 2nd-place gate pass on `gemma-4-26b-a4b-it` |
+| summarization | SMALL | 220 | no | 2nd-place gate pass on `gemma-4-26b-a4b-it` |
+| ner | SMALL | 260 | no | 2nd-place gate pass on `gemma-4-26b-a4b-it` |
+
+Evidence class: an entry that *passed the real accuracy gate* (finished 2nd) using these
+exact values on the exact judge models — stronger than any local proxy eval we can run.
+Await run 5's score before touching any value; if it passes, tighten caps one category
+per submission using their ~150 tokens/task as the target.
 
 ## Open follow-ups for the eval
 
