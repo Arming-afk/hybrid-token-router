@@ -41,9 +41,22 @@ The harness gives one number per submission — treat each run as one eval data 
 | 2 | `bcf1e8f` | pre-PR#9 router + math/logic MEDIUM, caps raised, 429 handling | **68.4%** | gate FAILED |
 | 3 | `4d5e32b` | PR #9 router widening + math/logic → LARGE (minimax-m3, 2000-tok cap) | **57.9%** | gate FAILED, regression |
 | 4 | `215e22a` | PR #9 router widening (kept) + math/logic reverted to MEDIUM | **63.2%** | gate FAILED, partial recovery |
-| 5 | _(next)_ | 2nd-place proven config: LARGE+`reasoning_effort=none` for factual/math/logic, CODE tier for debug/codegen, SMALL for the rest, 25s timeout, no stripping | | |
+| 5 | `6f01e64` | 2nd-place proven config: LARGE+`reasoning_effort=none` for factual/math/logic, CODE tier for debug/codegen, SMALL for the rest, 25s timeout, no stripping | **84.2%** | **gate PASSED** (5273 tokens) |
+| 6 | `2518cf4` | Stage 2 cut #1 (input filler trim) + cut #2 (factual → "1-2 sentences") | **73.7%** | gate FAILED, regression from run 5 |
 
-Readings: 47.4% ≈ 9/19, 68.4% ≈ 13/19, 57.9% ≈ 11/19, 63.2% ≈ 12/19 — judge set is ~19 tasks.
+Readings: 47.4% ≈ 9/19, 68.4% ≈ 13/19, 57.9% ≈ 11/19, 63.2% ≈ 12/19, 84.2% ≈ 16/19,
+73.7% ≈ 14/19 — judge set is ~19 tasks. **Gate threshold is bracketed at (73.7%, 84.2%]**
+— tightest evidence so far on where it actually sits.
+
+### Run 5→6 regression: cut #2 (factual → "1-2 sentences") cost ~2 tasks (2026-07-09)
+
+Run 6 bundled two changes (cut #1 filler trim + cut #2 factual squeeze) so, same as the
+run 2→3 confound, this isn't a clean isolation — but cut #2 is the far riskier change
+(a semantic cut to answer length, not just wording) on the highest-task-share category
+that also doubles as the router's misroute default on LARGE. Reverted cut #2 back to the
+run-5-proven "under 120 words"; kept cut #1 (filler-only, preserves every functional
+directive, plausibly neutral). Next scored run should isolate whether cut #1 alone is
+actually free, once back above the gate.
 
 ### Root cause of the run 2→3 regression, now cleanly decomposed (2026-07-09)
 
@@ -171,7 +184,7 @@ _Not yet run — needs FIREWORKS_BASE_URL. Run the command above to populate thi
 
 | category | chosen tier | chosen max_tokens | few-shot? | evidence |
 |---|---|---|---|---|
-| factual | LARGE | 300 | no | 2nd-place gate pass; misroute-default insurance |
+| factual | LARGE, "under 120 words" | 300 | no | 2nd-place gate pass (84.2%); "1-2 sentences" regressed to 73.7% (run 6), reverted |
 | math | LARGE | 400 | no | 2nd-place gate pass (with `reasoning_effort="none"`) |
 | logic | LARGE | 420 | no | 2nd-place gate pass (with `reasoning_effort="none"`) |
 | debug | CODE | 520 | no | 2nd-place gate pass on `kimi-k2p7-code` |

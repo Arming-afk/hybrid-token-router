@@ -18,9 +18,11 @@ if command -v cygpath > /dev/null 2>&1; then
   export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 fi
 
-docker build -t "$IMAGE" .
+docker build --platform linux/amd64 -t "$IMAGE" .
 mkdir -p out
-docker run --rm \
+# --cpus/--memory match the judging harness (2 vCPU, 4 GB RAM, 10-min timeout),
+# per the organizers' guidance -- always rehearse under the real constraints.
+docker run --rm --cpus=2 --memory=4g --platform linux/amd64 \
   -v "$HOST_DIR/$TASKS:/input/tasks.json:ro" \
   -v "$HOST_DIR/out:/output" \
   -e FIREWORKS_API_KEY -e FIREWORKS_BASE_URL -e ALLOWED_MODELS \

@@ -12,12 +12,17 @@ router's misroute default, so it deliberately sits on the strongest tier — any
 false positive lands on the most capable model instead of failing the gate.
 Their measured cost on the real harness models: ~150 tokens/task, all correct.
 
-Stage 2 (after the 84.2% gate-passing run at 5273 tokens): instruction wording is
-trimmed to the shortest phrasing that keeps every functional directive (the
-'Answer:' convention, the NER label list, 'one fenced block', length constraints).
-Only filler words were cut; tiers and caps are unchanged. This is the first,
-lowest-risk token cut — input tokens are paid on every task, so shorter
-instructions save tokens with ~zero accuracy risk.
+Stage 2 (after the 84.2%/5273-token gate-passing run, image 6f01e64), one cut per
+submission so each result cleanly measures one variable:
+- Cut #1 trimmed instruction filler only; it saved 13 tokens (5273 -> 5260) against
+  an input-side prediction of ~140, proving the counted tokens are overwhelmingly
+  on the OUTPUT side. Wording micro-trims are a dead end but harmless, so it stays.
+- Cut #2 shrank factual's output budget ("under 120 words" -> "1-2 sentences") and
+  scored **73.7% (14/19), a real regression from 84.2% (16/19)** — reverted. Factual
+  has the highest task share and is the router's misroute default on LARGE, so it
+  carries an outsized share of the accuracy gate; "1-2 sentences" was too terse for
+  explanatory factual prompts ("explain how X works") to satisfy the judge. Back to
+  the proven "under 120 words". See docs/eval-results.md for the run history.
 """
 
 _BASE = "English. Terse; no preamble."
