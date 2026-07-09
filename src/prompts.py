@@ -14,8 +14,6 @@ import re
 
 SPEC = {
     "factual": {
-        # TODO(person2): eval SMALL vs MEDIUM on real gemma — dropping to SMALL is the
-        # biggest token saving but a real accuracy risk. Kept at MEDIUM until measured.
         "tier": "MEDIUM",
         "max_tokens": 250,
         "instruction": "Answer accurately in at most 3 sentences.",
