@@ -18,6 +18,7 @@ returns the corrected tiers, then:
 """
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,9 @@ from src.prompts import CATEGORIES, SPEC  # noqa: E402
 
 EVAL_DIR = ROOT / "tests" / "eval"
 PASS_THRESHOLD = 0.90          # eval-set proxy for the real accuracy gate
-CONCURRENCY = 8
+# Default 8 suits paid endpoints; ':free' variants are congested upstream — set
+# EVAL_CONCURRENCY=2 there so bursts don't exhaust the client's 429 retry budget.
+CONCURRENCY = int(os.environ.get("EVAL_CONCURRENCY", "8"))
 RESULTS_DOC = ROOT / "docs" / "eval-results.md"
 
 DIRECT_MATH = 'Give only the final result as "Answer: <value>", with no explanation.'
@@ -75,15 +78,23 @@ async def run_config(cfg: dict, items: list[dict], model: str, judge_model: str,
             except Exception:
                 return False, 0
             tokens = usage["prompt_tokens"] + usage["completion_tokens"]
-            ok = await judge(judge_model, item["prompt"], answer, item["expected"])
+            try:
+                ok = await judge(judge_model, item["prompt"], answer, item["expected"])
+            except Exception as error:
+                # A dead judge (e.g. free-tier 429 storm) must not kill the whole run;
+                # None = unjudged, excluded from pass_rate rather than counted as a fail.
+                print(f"  judge error ({cfg['label']}): {str(error)[:100]}", file=sys.stderr)
+                return None, tokens
             return ok, tokens
 
     outcomes = await asyncio.gather(*(one(i) for i in items))
-    passed = sum(1 for ok, _ in outcomes if ok)
+    judged = [(ok, t) for ok, t in outcomes if ok is not None]
+    passed = sum(1 for ok, _ in judged if ok)
     tokens = [t for _, t in outcomes]
     return {
         "label": cfg["label"], "tier": cfg["tier"],
-        "pass_rate": passed / len(outcomes),
+        "pass_rate": passed / len(judged) if judged else 0.0,
+        "judged": len(judged), "total": len(outcomes),
         "avg_tokens": sum(tokens) / len(tokens),
     }
 
@@ -104,7 +115,10 @@ async def main(categories: list[str]) -> None:
         best = min(passing, key=lambda r: r["avg_tokens"]) if passing else None
         for r in rows:
             pick = "  <= cheapest pass" if r is best else ("  (fails gate)" if r["pass_rate"] < PASS_THRESHOLD else "")
-            lines.append(f"| {cat} | {r['label']} | {tiers[r['tier']]} | {r['pass_rate']:.0%} "
+            rate = f"{r['pass_rate']:.0%}"
+            if r["judged"] < r["total"]:
+                rate += f" ({r['judged']}/{r['total']} judged)"
+            lines.append(f"| {cat} | {r['label']} | {tiers[r['tier']]} | {rate} "
                          f"| {r['avg_tokens']:.0f} |{pick} |")
         if not passing:
             lines.append(f"| {cat} | — | — | — | — | NONE PASS: bump tier or add few-shot |")
@@ -126,6 +140,14 @@ def _write_results(table: str) -> None:
         print(f"\nwrote table into {RESULTS_DOC.relative_to(ROOT)}")
 
 
+async def _run(cats: list[str]) -> None:
+    # aclose in a finally: an escaping exception must still close the client inside
+    # the loop, or the interpreter segfaults at shutdown on Windows (exit 139).
+    try:
+        await main(cats)
+    finally:
+        await client.aclose()
+
+
 if __name__ == "__main__":
-    cats = [c for c in sys.argv[1:] if c in CATEGORIES] or CATEGORIES
-    asyncio.run(main(cats))
+    asyncio.run(_run([c for c in sys.argv[1:] if c in CATEGORIES] or CATEGORIES))
