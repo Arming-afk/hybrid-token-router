@@ -1,10 +1,12 @@
 """Thin async client. ALL calls must go through FIREWORKS_BASE_URL (the judging proxy)."""
 import asyncio
 import os
+import random
 
 from openai import APIStatusError, AsyncOpenAI
 
 RETRIES = 2
+RATE_LIMIT_RETRIES = 4  # 429s get their own, more patient budget
 CALL_TIMEOUT_SECONDS = 60
 
 _client = None
@@ -36,10 +38,21 @@ def _is_permanent(error: Exception) -> bool:
             and error.status_code < 500 and error.status_code != 429)
 
 
+def _is_rate_limit(error: Exception) -> bool:
+    return isinstance(error, APIStatusError) and error.status_code == 429
+
+
 async def complete(model: str, messages: list[dict], max_tokens: int) -> tuple[str, dict]:
-    """Return (text, usage). Retries transient failures; raises after the last attempt."""
+    """Return (text, usage). Retries transient failures; raises after the last attempt.
+
+    429s get a separate, more patient budget: an empty answer is a guaranteed judge
+    fail, so waiting out a rate-limit window (with jitter, so concurrent tasks don't
+    re-stampede the proxy) is always worth the time while the global deadline allows.
+    """
     last_error = None
-    for attempt in range(RETRIES + 1):
+    failures = 0
+    rate_hits = 0
+    while True:
         try:
             response = await asyncio.wait_for(
                 get_client().chat.completions.create(
@@ -59,6 +72,14 @@ async def complete(model: str, messages: list[dict], max_tokens: int) -> tuple[s
             last_error = error
             if _is_permanent(error):
                 break
-            if attempt < RETRIES:
-                await asyncio.sleep(1 + 2 * attempt)
+            if _is_rate_limit(error):
+                rate_hits += 1
+                if rate_hits > RATE_LIMIT_RETRIES:
+                    break
+                await asyncio.sleep(4 * rate_hits + random.uniform(0, 3))
+                continue
+            failures += 1
+            if failures > RETRIES:
+                break
+            await asyncio.sleep(2 * failures - 1)
     raise last_error

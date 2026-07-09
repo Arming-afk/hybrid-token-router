@@ -2,36 +2,43 @@
 
 This is the main tuning surface: every token in an instruction must earn its place,
 and every tier bump must be justified by a failed eval at the cheaper tier.
+
+Current values are the GATE-FIRST config after the first scored run failed the
+accuracy gate at 47.4% (2026-07-08): every category runs on MEDIUM (the largest
+non-reasoning model) with generous caps, because truncated or weak answers fail
+the judge outright and rank-by-tokens only exists after the gate is passed.
+Once a submission passes, walk categories back down (SMALL, tighter caps) one
+resubmission at a time and keep the cheapest config that still passes.
 """
 
 SPEC = {
     "factual": {
         "tier": "MEDIUM",
-        "max_tokens": 200,
+        "max_tokens": 250,
         "instruction": "Answer accurately in at most 3 sentences.",
     },
     "math": {
         "tier": "MEDIUM",
-        "max_tokens": 300,
+        "max_tokens": 450,
         "instruction": (
             'Show at most 3 brief calculation steps, then end with exactly: "Answer: <value>"'
         ),
     },
     "sentiment": {
-        "tier": "SMALL",
-        "max_tokens": 60,
+        "tier": "MEDIUM",
+        "max_tokens": 120,
         "instruction": 'Reply: "<label> - <one short sentence of justification>"',
     },
     "summarization": {
-        "tier": "SMALL",
-        "max_tokens": 250,
+        "tier": "MEDIUM",
+        "max_tokens": 300,
         "instruction": (
             "Follow the stated length/format constraint exactly. Output only the summary."
         ),
     },
     "ner": {
-        "tier": "SMALL",
-        "max_tokens": 250,
+        "tier": "MEDIUM",
+        "max_tokens": 300,
         "instruction": (
             "List one entity per line as: <entity> | <PERSON|ORG|LOCATION|DATE>\n"
             "No other text."
@@ -39,7 +46,7 @@ SPEC = {
     },
     "debug": {
         "tier": "MEDIUM",
-        "max_tokens": 600,
+        "max_tokens": 800,
         "instruction": (
             "State the bug in one sentence, then give the full corrected code in one "
             "code block. No other explanation."
@@ -47,7 +54,7 @@ SPEC = {
     },
     "logic": {
         "tier": "MEDIUM",
-        "max_tokens": 350,
+        "max_tokens": 500,
         "instruction": (
             "Work through the constraints in at most 5 short lines, then end with "
             'exactly: "Answer: <solution>"'
@@ -55,7 +62,7 @@ SPEC = {
     },
     "codegen": {
         "tier": "MEDIUM",
-        "max_tokens": 600,
+        "max_tokens": 800,
         "instruction": "Output only the code in one code block. No explanation before or after.",
     },
 }
