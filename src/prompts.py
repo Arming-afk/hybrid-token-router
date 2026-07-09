@@ -19,12 +19,8 @@ SPEC = {
         "instruction": "Answer accurately in at most 3 sentences.",
     },
     "math": {
-        # LARGE after the 68.4% run: multi-step math is where a 31B dense model
-        # keeps dropping points, and minimax-m3's (billed) hidden reasoning is the
-        # strongest solver in ALLOWED_MODELS. The 2000-token cap leaves room for
-        # that reasoning; a tight cap makes it think past the budget and emit "".
-        "tier": "LARGE",
-        "max_tokens": 2000,
+        "tier": "MEDIUM",
+        "max_tokens": 450,
         "instruction": (
             'Show at most 3 brief calculation steps, then end with exactly: "Answer: <value>"'
         ),
@@ -58,10 +54,8 @@ SPEC = {
         ),
     },
     "logic": {
-        # LARGE for the same reason as math: constraint puzzles are the other
-        # classic multi-step weakness, and the reasoning model shines here.
-        "tier": "LARGE",
-        "max_tokens": 2000,
+        "tier": "MEDIUM",
+        "max_tokens": 500,
         "instruction": (
             "Work through the constraints in at most 5 short lines, then end with "
             'exactly: "Answer: <solution>"'
