@@ -137,5 +137,39 @@
   {"category": "logic", "prompt": "A logic puzzle: three friends ordered different drinks. From the clues, work out who ordered the tea."},
   {"category": "logic", "prompt": "Knights always tell the truth and knaves always lie. You meet two islanders and must decide who is the knight."},
   {"category": "logic", "prompt": "Given that no reptiles are warm-blooded and all snakes are reptiles, are any snakes warm-blooded?"},
-  {"category": "logic", "prompt": "Rank the four teams from first to last using the results: A beat B, C beat A, D beat C."}
+  {"category": "logic", "prompt": "Rank the four teams from first to last using the results: A beat B, C beat A, D beat C."},
+
+  {"category": "math", "prompt": "What is half of 84?"},
+  {"category": "math", "prompt": "A number doubles every day starting from 3. What is it after 5 days?"},
+  {"category": "math", "prompt": "There are 4 dozen eggs. How many eggs is that in total?"},
+  {"category": "math", "prompt": "What is the square root of 144?"},
+  {"category": "math", "prompt": "What is 7 squared?"},
+  {"category": "math", "prompt": "What is 2 cubed?"},
+  {"category": "math", "prompt": "Divide 91 by 7 and give the remainder."},
+  {"category": "math", "prompt": "What is the product of 6 and 9?"},
+  {"category": "math", "prompt": "What is a quarter of 200?"},
+  {"category": "math", "prompt": "Round 3.14159 to 2 decimal places."},
+  {"category": "math", "prompt": "A triangle has a base of 10 cm and a height of 4 cm. What is its area?"},
+
+  {"category": "factual", "prompt": "How many moons does Jupiter have?"},
+  {"category": "factual", "prompt": "What year was the telephone invented, and who invented it?"},
+  {"category": "factual", "prompt": "Since 1610, how has our understanding of Jupiter's moons changed?"},
+  {"category": "factual", "prompt": "How tall is Mount Everest?"},
+  {"category": "factual", "prompt": "What is the population of Japan?"},
+
+  {"category": "ner", "prompt": "Who are the people and companies named in this passage? 'Warren Buffett met with executives from Coca-Cola in Omaha.'"},
+  {"category": "ner", "prompt": "Highlight every organization mentioned in the following press release: 'NASA and SpaceX confirmed the launch date.'"},
+
+  {"category": "sentiment", "prompt": "Is this customer happy or unhappy with the service? 'They fixed my issue in five minutes, amazing!'"},
+
+  {"category": "debug", "prompt": "Refactor this code to fix the memory leak:\ndef load(): \n    data = open('f').read()\n    return data"},
+  {"category": "codegen", "prompt": "Develop a REST endpoint that returns a list of users as JSON."},
+
+  {"category": "factual", "prompt": "Who is the tallest mountain in the world?"},
+  {"category": "factual", "prompt": "What is the fastest animal on land?"},
+  {"category": "factual", "prompt": "Which country is the largest by land area?"},
+
+  {"category": "factual", "prompt": "What is an API and why do we use one?"},
+  {"category": "factual", "prompt": "Why do we refrigerate food?"},
+  {"category": "factual", "prompt": "What does the error message 'connection refused' usually mean?"}
 ]
