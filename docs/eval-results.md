@@ -42,21 +42,62 @@ The harness gives one number per submission — treat each run as one eval data 
 | 3 | `4d5e32b` | PR #9 router widening + math/logic → LARGE (minimax-m3, 2000-tok cap) | **57.9%** | gate FAILED, regression |
 | 4 | `215e22a` | PR #9 router widening (kept) + math/logic reverted to MEDIUM | **63.2%** | gate FAILED, partial recovery |
 | 5 | `6f01e64` | 2nd-place proven config: LARGE+`reasoning_effort=none` for factual/math/logic, CODE tier for debug/codegen, SMALL for the rest, 25s timeout, no stripping | **84.2%** | **gate PASSED** (5273 tokens) |
-| 6 | `2518cf4` | Stage 2 cut #1 (input filler trim) + cut #2 (factual → "1-2 sentences") | **73.7%** | gate FAILED, regression from run 5 |
+| 6 | `6b9aefa` | Stage 2 cut #1: instruction filler trim only | (accuracy not recorded) | tokens **5260** (−13 vs predicted ~140) |
+| 7 | `2518cf4` | Stage 2 cut #2: factual → "1-2 sentences" | **73.7%** | gate FAILED, regression from run 5 |
+| 8 | `c7120f0` | cut #2 reverted (factual back to "under 120 words"), cut #1 kept | | |
 
 Readings: 47.4% ≈ 9/19, 68.4% ≈ 13/19, 57.9% ≈ 11/19, 63.2% ≈ 12/19, 84.2% ≈ 16/19,
 73.7% ≈ 14/19 — judge set is ~19 tasks. **Gate threshold is bracketed at (73.7%, 84.2%]**
 — tightest evidence so far on where it actually sits.
 
-### Run 5→6 regression: cut #2 (factual → "1-2 sentences") cost ~2 tasks (2026-07-09)
+### Run 5→7 regression: cut #2 (factual → "1-2 sentences") cost ~2 tasks (2026-07-09)
 
-Run 6 bundled two changes (cut #1 filler trim + cut #2 factual squeeze) so, same as the
-run 2→3 confound, this isn't a clean isolation — but cut #2 is the far riskier change
-(a semantic cut to answer length, not just wording) on the highest-task-share category
-that also doubles as the router's misroute default on LARGE. Reverted cut #2 back to the
-run-5-proven "under 120 words"; kept cut #1 (filler-only, preserves every functional
-directive, plausibly neutral). Next scored run should isolate whether cut #1 alone is
-actually free, once back above the gate.
+Cut #1 rode its own scored run (6) and only moved tokens −13, so cut #2 in run 7 is
+cleanly isolated as the regression: a semantic cut to answer length (not just wording)
+on the highest-task-share category that also doubles as the router's misroute default
+on LARGE. Reverted cut #2 back to the run-5-proven "under 120 words"; kept cut #1.
+Cut #1's own lesson: it saved 13 tokens against an input-side prediction of ~140 —
+run-to-run token noise is ~±100, so **cuts below ~200 predicted tokens are unmeasurable**
+and wording micro-trims are a dead end.
+
+### Token-cost probe on the public endpoint (2026-07-10) — numbers for Stage 2 cuts
+
+`scratchpad/probe_tokens.py` hit the PUBLIC Fireworks endpoint with the team key using
+our exact production instructions (system+user shape, `reasoning_effort="none"`,
+temperature 0). Public deployment may differ from the judges' proxy — treat as strong
+approximation, not ground truth. All six answers were CORRECT.
+
+| probe | model | prompt | completion | note |
+|---|---|---|---|---|
+| math, current "brief steps" | minimax-m3 | 163 | **38** | steps + Answer line |
+| math, answer-only | minimax-m3 | 158 | **7** | correct without any steps |
+| logic, current "numbered steps" | minimax-m3 | 176 | **30** | |
+| logic, answer-only | minimax-m3 | 164 | **4** | correct without any steps |
+| debug, current (bug sentence + code) | kimi-k2p7-code | 77 | **69** | |
+| debug, code-only | kimi-k2p7-code | 73 | **43** | −38% |
+
+Findings:
+1. **`reasoning_effort="none"` suppresses minimax completely** (`reasoning_len=0` on
+   every call) and correctness held even with zero visible steps on these samples.
+   minimax OUTPUT is cheap — completions are not where run 5's 5273 went.
+2. **minimax bills ~+95–100 hidden PROMPT tokens per call.** Identical-size content
+   costs ~77 prompt tokens on kimi but ~160+ on minimax; the variable part tracks
+   instruction length 1:1, so the fixed overhead is ~100/call (hidden preamble or
+   tokenizer, either way billed). With factual+math+logic ≈ 7–8 judge tasks on LARGE,
+   that's **~700–800 tokens/run of structural overhead tied to the tier mapping**.
+3. kimi-k2p7-code is now reachable on the public key (was 429-locked on 2026-07-08)
+   and is terse; "code only" cuts debug by ~38% on the sample.
+
+Implications for reaching <4000 total (from the 5260 baseline, need ≈ −1300):
+- Phase B (instruction cuts, one per submission, probe-backed): math/logic to
+  "at most 2 short steps" or answer-only (−250–500); debug to code-only, codegen
+  "no comments" (−100–150); factual to "under 60 words" (−100–200; "1-2 sentences"
+  is proven too far, 4× that budget is the untested middle).
+- Phase C (structural, if B lands short): move ONE of factual|math+logic off minimax
+  to MEDIUM to shed the ~100/call prompt tax (−200–300 plus shorter gemma answers);
+  factual→MEDIUM sacrifices the misroute-insurance design, math+logic→MEDIUM re-tests
+  what run 2 could not isolate. Each is its own scored experiment.
+- Expected landing: B alone ≈ 4400–4700; B + one C move ≈ 3900–4300.
 
 ### Root cause of the run 2→3 regression, now cleanly decomposed (2026-07-09)
 
