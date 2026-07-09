@@ -15,7 +15,7 @@ from . import client, models, prompts, router
 INPUT_PATH = os.environ.get("INPUT_PATH", "/input/tasks.json")
 OUTPUT_PATH = os.environ.get("OUTPUT_PATH", "/output/results.json")
 DEADLINE_SECONDS = 8.5 * 60  # harness kills at 10 min; leave margin to write output
-CONCURRENCY = 8
+CONCURRENCY = 6  # gentler on the proxy's rate limits; 429-hit answers come back empty
 
 START = time.monotonic()
 
@@ -51,7 +51,10 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
         text = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
         if not text.strip():
             retry_tier = "LARGE" if tier != "LARGE" else "MEDIUM"
-            text = await try_complete(task_id, category, tiers[retry_tier], messages, max_tokens)
+            # LARGE may be a reasoning model whose billed hidden thinking competes with
+            # the visible answer for max_tokens; give the rescue attempt enough room.
+            retry_max = max(max_tokens, 700)
+            text = await try_complete(task_id, category, tiers[retry_tier], messages, retry_max)
         results[task_id] = prompts.postprocess(category, text)
 
 
