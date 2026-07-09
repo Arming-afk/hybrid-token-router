@@ -45,6 +45,8 @@ The harness gives one number per submission — treat each run as one eval data 
 | 6 | `6b9aefa` | Stage 2 cut #1: instruction filler trim only | (accuracy not recorded) | tokens **5260** (−13 vs predicted ~140) |
 | 7 | `2518cf4` | Stage 2 cut #2: factual → "1-2 sentences" | **73.7%** | gate FAILED, regression from run 5 |
 | 8 | `c7120f0` | cut #2 reverted (factual back to "under 120 words"), cut #1 kept | | |
+| 9 | _(queued)_ | cut #3: math/logic → "at most 2 short steps" + codegen "No comments." (probe-backed; predicted −300–550) | | |
+| 10 | _(queued)_ | cut #4: factual → "under 60 words" (untested middle between proven-120 and failed-1-2-sentences; predicted −100–200) | | |
 
 Readings: 47.4% ≈ 9/19, 68.4% ≈ 13/19, 57.9% ≈ 11/19, 63.2% ≈ 12/19, 84.2% ≈ 16/19,
 73.7% ≈ 14/19 — judge set is ~19 tasks. **Gate threshold is bracketed at (73.7%, 84.2%]**

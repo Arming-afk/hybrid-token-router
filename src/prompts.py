@@ -23,6 +23,12 @@ submission so each result cleanly measures one variable:
   carries an outsized share of the accuracy gate; "1-2 sentences" was too terse for
   explanatory factual prompts ("explain how X works") to satisfy the judge. Back to
   the proven "under 120 words". See docs/eval-results.md for the run history.
+- Cut #3 (probe-backed, see the token-cost probe in docs/eval-results.md): math and
+  logic capped at "2 short steps" — the public-endpoint probe showed minimax-m3 with
+  reasoning_effort="none" answers correctly with even zero visible steps, so verbose
+  step-by-step output was pure token cost; codegen additionally forbids comments.
+  Debug is deliberately untouched: the judge's category description is "identifying
+  bugs AND providing corrected implementations", so the bug sentence stays.
 """
 
 _BASE = "English. Terse; no preamble."
@@ -35,8 +41,11 @@ SPEC = {
     },
     "math": {
         "tier": "LARGE",
+        # Cap unchanged on purpose: it only bounds a disobedient long answer (billed,
+        # not truncated); the token cut comes from the instruction, the single
+        # variable this submission measures.
         "max_tokens": 400,
-        "instruction": f"{_BASE} Brief steps, then 'Answer: <value>' on its own line.",
+        "instruction": f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line.",
     },
     "sentiment": {
         "tier": "SMALL",
@@ -72,15 +81,15 @@ SPEC = {
         "tier": "LARGE",
         "max_tokens": 420,
         "instruction": (
-            f"{_BASE} Deduce in brief numbered steps checking each constraint, then "
-            f"'Answer: <value>' on its own line."
+            f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line."
         ),
     },
     "codegen": {
         "tier": "CODE",
         "max_tokens": 520,
         "instruction": (
-            f"{_BASE} Only the code, in one fenced block, correct and self-contained."
+            f"{_BASE} Only the code, in one fenced block, correct and self-contained. "
+            f"No comments."
         ),
     },
 }
