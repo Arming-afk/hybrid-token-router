@@ -12,15 +12,17 @@ router's misroute default, so it deliberately sits on the strongest tier — any
 false positive lands on the most capable model instead of failing the gate.
 Their measured cost on the real harness models: ~150 tokens/task, all correct.
 
-Stage 2 (after the 84.2% gate-passing run at 5273 tokens), one cut per submission:
+Stage 2 (after the 84.2%/5273-token gate-passing run, image 6f01e64), one cut per
+submission so each result cleanly measures one variable:
 - Cut #1 trimmed instruction filler only; it saved 13 tokens (5273 -> 5260) against
   an input-side prediction of ~140, proving the counted tokens are overwhelmingly
-  on the OUTPUT side. Wording micro-trims are a dead end.
-- Cut #2 shrinks factual's output budget ("under 120 words" -> "1-2 sentences").
-  Factual has the highest task share (most common category AND the router's
-  misroute default) on the LARGE tier, and the judge scores correctness, not
-  thoroughness, so a shorter direct answer cuts the most tokens at the least
-  gate risk. Tiers and caps are unchanged.
+  on the OUTPUT side. Wording micro-trims are a dead end but harmless, so it stays.
+- Cut #2 shrank factual's output budget ("under 120 words" -> "1-2 sentences") and
+  scored **73.7% (14/19), a real regression from 84.2% (16/19)** — reverted. Factual
+  has the highest task share and is the router's misroute default on LARGE, so it
+  carries an outsized share of the accuracy gate; "1-2 sentences" was too terse for
+  explanatory factual prompts ("explain how X works") to satisfy the judge. Back to
+  the proven "under 120 words". See docs/eval-results.md for the run history.
 """
 
 _BASE = "English. Terse; no preamble."
@@ -28,10 +30,8 @@ _BASE = "English. Terse; no preamble."
 SPEC = {
     "factual": {
         "tier": "LARGE",
-        # Cap stays 300 as a safety net: if the model ignores the length directive,
-        # a long-but-complete answer still passes the judge; a truncated one may not.
         "max_tokens": 300,
-        "instruction": f"{_BASE} Answer directly in 1-2 sentences.",
+        "instruction": f"{_BASE} Answer clearly in under 120 words.",
     },
     "math": {
         "tier": "LARGE",
