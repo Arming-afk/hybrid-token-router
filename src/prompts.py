@@ -10,9 +10,12 @@ the judge outright and rank-by-tokens only exists after the gate is passed.
 Once a submission passes, walk categories back down (SMALL, tighter caps) one
 resubmission at a time and keep the cheapest config that still passes.
 """
+import re
 
 SPEC = {
     "factual": {
+        # TODO(person2): eval SMALL vs MEDIUM on real gemma — dropping to SMALL is the
+        # biggest token saving but a real accuracy risk. Kept at MEDIUM until measured.
         "tier": "MEDIUM",
         "max_tokens": 250,
         "instruction": "Answer accurately in at most 3 sentences.",
@@ -76,12 +79,17 @@ def render(category: str, prompt: str) -> tuple[list[dict], int, str]:
     return messages, spec["max_tokens"], spec["tier"]
 
 
+_ANSWER_MARKER = re.compile(r"answer\s*:", re.I)
+
+
 def postprocess(category: str, text: str) -> str:
     # math/logic answers end with "Answer: X"; hand the judge just the final answer.
+    # Matched case-insensitively since models don't always follow the exact casing
+    # asked for in the instruction.
     if category in ("math", "logic"):
-        marker = text.rfind("Answer:")
-        if marker != -1:
-            answer = text[marker + len("Answer:"):].strip()
+        matches = list(_ANSWER_MARKER.finditer(text))
+        if matches:
+            answer = text[matches[-1].end():].strip()
             if answer:
                 return answer
     return text.strip()

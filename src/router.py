@@ -37,9 +37,10 @@ R = {
     ),
     "ner": re.compile(
         r"named entit|\bNER\b"
-        r"|\b(extract|identify|find|list|tag|label|pull out|pick out)\b.{0,80}"
+        r"|\b(extract|identify|find|list|tag|label|pull out|pick out|highlight|name)\b.{0,80}"
         r"\b(persons?|people|organi[sz]ations?|\borgs?\b|compan(y|ies)|locations?|places?"
         r"|cit(y|ies)|countr(y|ies)|dates?|entit(y|ies))\b"
+        r"|\b(persons?|people|organi[sz]ations?|companies|locations?)\b.{0,60}\bnamed\b"
         r"|\bwho (is|are) (mentioned|named|listed|referenced)\b"
         r"|\b(which|what)\b.{0,60}\b(mentioned|referenced|named|listed|appear)\b",
         re.I,
@@ -66,7 +67,11 @@ WRITE = re.compile(r"\b(write|implement|create|build|generate|develop|complete)\
 STRONG_FIX = re.compile(
     r"\bfix\b|\bdebug\b|\bbugs?\b|\bbuggy\b|\bbroken\b|off-by-one"
     r"|doesn'?t work|not working|never (terminates|returns|works|ends)"
-    r"|should\b.{0,50}\bbut\b|why (does|do|is|are|doesn'?t)",
+    r"|should\b.{0,50}\bbut\b"
+    # "why does/do/is/are" alone is an ordinary explanatory question ("why do we use
+    # X?"); only treat it as a bug report when it's paired with a failure/behavior word.
+    r"|why (does|do|is|are|doesn'?t)\b.{0,40}\b(work|returns?|crash(es)?|fails?|raise"
+    r"s?|throws?|breaks?|output|print|behave|terminate|loop|error|exception)\b",
     re.I,
 )
 # FIX is the wider repair vocabulary, only consulted once no WRITE verb is present.
@@ -81,8 +86,11 @@ MATH_SIGNAL = re.compile(
     r"\bcalculate\b|\bcompute\b|\bconvert\b|\bhow (many|much|old|far|fast|long)\b"
     r"|\bpercent(age)?\b|%|\baverage of\b|\bsum of\b|\btotal\b|\bcompound\b|\binterest\b"
     r"|\bdiscount|\bprofit\b|\bsales tax\b|\bper (hour|day|week|month|year|item|unit|person)\b"
-    r"|\bspeed\b|\bratio\b|\bproportion\b|\btimes\b|\bdivided\b|\bmultipl|\bplus\b|\bminus\b"
-    r"|\barea\b|\bperimeter\b|\bvolume\b|[+×÷]",
+    r"|\bspeed\b|\bratio\b|\bproportion\b|\btimes\b|\bdivided?\b|\bmultipl|\bplus\b|\bminus\b"
+    r"|\barea\b|\bperimeter\b|\bvolume\b|[+×÷]"
+    r"|\bhalf of\b|\bquarter of\b|\bdozen\b|\bdouble[sd]?\b|\btriple[sd]?\b|\btwice\b"
+    r"|\bsquare root\b|\bsquared\b|\bcubed\b|\bremainder\b|\bquotient\b|\bproduct of\b"
+    r"|\bround(ed)?\b.{0,20}\bdecimal",
     re.I,
 )
 
@@ -93,11 +101,18 @@ STRONG_LOGIC = re.compile(
     r"|\blogic puzzle\b",
     re.I,
 )
+# Excludes common factual-trivia subjects ("tallest mountain in the world") so a bare
+# superlative question about a real-world thing doesn't get mistaken for a puzzle about
+# named people/items being ranked.
+NOT_TRIVIA_SUBJECT = (
+    r"(?!.{0,25}\b(mountain|animal|country|countries|ocean|river|planet|building|city"
+    r"|structure|lake|desert|bird|fish|tree|species|continent|state|volcano|waterfall)\b)"
+)
 WEAK_LOGIC = re.compile(
-    r"\brow of\b|\bnext to\b|\badjacent\b|\b(directly |immediately )?(left|right) of\b"
+    r"\brow of\b|\badjacent\b|\b(directly |immediately )?(left|right) of\b"
     r"|\bfinish(es|ed)?\b.{0,20}\b(before|after|first|last)\b"
-    r"|\bwho (finished|came|won|wins|placed|ranked|owns|is next)\b"
-    r"|\bwho is (the )?(tallest|shortest|oldest|youngest|fastest|slowest|biggest|smallest"
+    r"|\bwho (finished|came|won|wins|placed|ranked|owns|is next)\b(?!\s+to\b)"
+    r"|\bwho is (the )?" + NOT_TRIVIA_SUBJECT + r"(tallest|shortest|oldest|youngest|fastest|slowest|biggest|smallest"
     r"|richest|first|last)\b"
     r"|\bmore than\b.{0,30}\bless than\b|\bfirst to last\b"
     r"|\brank\b.{0,40}\b(first|last|order|from|to)\b|\b(all|some|no)\b \w+ \bare\b",
