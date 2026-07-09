@@ -65,8 +65,9 @@ python tests/test_main.py       # entrypoint failure drills
 
 ## Submission rules (per the portal, verified 2026-07-10)
 
-- Submissions are **unlimited** — but the leaderboard scores the **LATEST run only**,
-  not the best. Two consequences:
+- Submissions are **unlimited in total but rate-limited to 10 per hour per team**
+  (guide wording: "submissions are rate-limited to 10 per hour per team").
+- The leaderboard scores the **LATEST run only**, not the best. Two consequences:
   - After any experimental submission that scores worse, **immediately re-submit the
     best-known config** so we never sit on a bad score.
   - Before the deadline, the **final submission must be the best config** — schedule

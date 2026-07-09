@@ -22,10 +22,11 @@ this key, not your own"). We verified with a personal Fireworks key that:
 
 **Conclusion:** `scripts/eval_matrix.py` cannot produce trustworthy numbers before the
 harness runs. Strategy is therefore **validate the pipeline (done) + hand-tune `SPEC` from
-public model facts**, and defer measured tuning to real harness submissions (unlimited,
-but the leaderboard scores the *latest* run — roll back to the best config after any
-failed experiment; see README "Submission rules". Also superseded in part: the real
-Track 1 models were later found runnable via OpenRouter — see `.env.eval`).
+public model facts**, and defer measured tuning to real harness submissions (unlimited
+in total, rate-limited to 10/hour per team; the leaderboard scores the *latest* run —
+roll back to the best config after any failed experiment; see README "Submission
+rules". Also superseded in part: the real Track 1 models were later found runnable
+via OpenRouter — see `.env.eval`).
 
 ### What we know about the real tiers (basis for hand-tuning)
 - **SMALL `gemma-4-26b-a4b-it`** — 26B MoE, 4B active. Instruction-tuned (`-it`), *not* a
