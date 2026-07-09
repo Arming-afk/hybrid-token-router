@@ -12,15 +12,12 @@ router's misroute default, so it deliberately sits on the strongest tier — any
 false positive lands on the most capable model instead of failing the gate.
 Their measured cost on the real harness models: ~150 tokens/task, all correct.
 
-Stage 2 (after the 84.2% gate-passing run at 5273 tokens), one cut per submission:
-- Cut #1 trimmed instruction filler only; it saved 13 tokens (5273 -> 5260) against
-  an input-side prediction of ~140, proving the counted tokens are overwhelmingly
-  on the OUTPUT side. Wording micro-trims are a dead end.
-- Cut #2 shrinks factual's output budget ("under 120 words" -> "1-2 sentences").
-  Factual has the highest task share (most common category AND the router's
-  misroute default) on the LARGE tier, and the judge scores correctness, not
-  thoroughness, so a shorter direct answer cuts the most tokens at the least
-  gate risk. Tiers and caps are unchanged.
+Stage 2 (after the 84.2% gate-passing run at 5273 tokens): instruction wording is
+trimmed to the shortest phrasing that keeps every functional directive (the
+'Answer:' convention, the NER label list, 'one fenced block', length constraints).
+Only filler words were cut; tiers and caps are unchanged. This is the first,
+lowest-risk token cut — input tokens are paid on every task, so shorter
+instructions save tokens with ~zero accuracy risk.
 """
 
 _BASE = "English. Terse; no preamble."
@@ -28,10 +25,8 @@ _BASE = "English. Terse; no preamble."
 SPEC = {
     "factual": {
         "tier": "LARGE",
-        # Cap stays 300 as a safety net: if the model ignores the length directive,
-        # a long-but-complete answer still passes the judge; a truncated one may not.
         "max_tokens": 300,
-        "instruction": f"{_BASE} Answer directly in 1-2 sentences.",
+        "instruction": f"{_BASE} Answer clearly in under 120 words.",
     },
     "math": {
         "tier": "LARGE",
