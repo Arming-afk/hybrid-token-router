@@ -31,6 +31,21 @@ public model facts**, and defer measured tuning to real harness submissions (10/
 - **LARGE `minimax-m3`** — unknown size; reasoning status UNVERIFIED (see follow-ups).
 - **`kimi-k2p7-code`** — code-specialized, unused by the 3-tier scheme.
 
+## Scored submission history (the only real accuracy numbers we have)
+
+The harness gives one number per submission — treat each run as one eval data point.
+
+| # | image | config | accuracy | verdict |
+|---|---|---|---|---|
+| 1 | `60a82aa` | original guesses: easy cats on SMALL (4B-active), tight caps | **47.4%** | gate FAILED |
+| 2 | `bcf1e8f` | gate-first: everything on MEDIUM (31B), caps raised, 429 handling | **68.4%** | gate FAILED |
+| 3 | _(next)_ | math+logic → LARGE (minimax-m3, 2000-token cap) | | |
+
+Readings: 47.4% ≈ 9/19 and 68.4% ≈ 13/19, so the judge set is likely ~19 tasks and the
+MEDIUM upgrade bought ~4 tasks. The remaining misses concentrate (by elimination) in the
+multi-step categories — hence run 3 sends math+logic to the reasoning model. Token cost is
+deliberately ignored until the gate passes.
+
 ### Decisions deferred to a real eval (do NOT guess these blind)
 - `factual`: currently MEDIUM. Biggest token-saving opportunity is dropping to SMALL, but
   it's a genuine accuracy risk — needs a real gemma eval. Left at MEDIUM (safe) with a TODO.
