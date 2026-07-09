@@ -3,6 +3,7 @@
 This is the main tuning surface: every token in an instruction must earn its place,
 and every tier bump must be justified by a failed eval at the cheaper tier.
 """
+import re
 
 SPEC = {
     "factual": {
@@ -71,12 +72,17 @@ def render(category: str, prompt: str) -> tuple[list[dict], int, str]:
     return messages, spec["max_tokens"], spec["tier"]
 
 
+_ANSWER_MARKER = re.compile(r"answer\s*:", re.I)
+
+
 def postprocess(category: str, text: str) -> str:
     # math/logic answers end with "Answer: X"; hand the judge just the final answer.
+    # Matched case-insensitively since models don't always follow the exact casing
+    # asked for in the instruction.
     if category in ("math", "logic"):
-        marker = text.rfind("Answer:")
-        if marker != -1:
-            answer = text[marker + len("Answer:"):].strip()
+        matches = list(_ANSWER_MARKER.finditer(text))
+        if matches:
+            answer = text[matches[-1].end():].strip()
             if answer:
                 return answer
     return text.strip()
