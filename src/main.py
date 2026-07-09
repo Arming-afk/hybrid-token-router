@@ -15,9 +15,14 @@ from . import client, models, prompts, router
 INPUT_PATH = os.environ.get("INPUT_PATH", "/input/tasks.json")
 OUTPUT_PATH = os.environ.get("OUTPUT_PATH", "/output/results.json")
 DEADLINE_SECONDS = 8.5 * 60  # harness kills at 10 min; leave margin to write output
-CONCURRENCY = 8
+CONCURRENCY = 6  # gentler on the proxy's rate limits; 429-hit answers come back empty
 
 START = time.monotonic()
+
+# One entry per successful API call; dumped to inference_log.json next to the
+# results. The guide's "no inference log is required for Track 2" phrasing implies
+# Track 1 expects one. Single event loop -> plain list append is safe.
+CALL_LOG: list[dict] = []
 
 
 def log(event: str, **fields) -> None:
@@ -29,6 +34,7 @@ async def try_complete(task_id: str, category: str, model: str,
     try:
         text, usage = await client.complete(model, messages, max_tokens)
         log("USAGE", task_id=task_id, category=category, model=model, **usage)
+        CALL_LOG.append({"task_id": task_id, "category": category, "model": model, **usage})
         return text
     except Exception as error:
         log("ERROR", task_id=task_id, model=model, error=str(error)[:200])
@@ -51,7 +57,10 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
         text = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
         if not text.strip():
             retry_tier = "LARGE" if tier != "LARGE" else "MEDIUM"
-            text = await try_complete(task_id, category, tiers[retry_tier], messages, max_tokens)
+            # LARGE may be a reasoning model whose billed hidden thinking competes with
+            # the visible answer for max_tokens; give the rescue attempt enough room.
+            retry_max = max(max_tokens, 700)
+            text = await try_complete(task_id, category, tiers[retry_tier], messages, retry_max)
         results[task_id] = prompts.postprocess(category, text)
 
 
@@ -79,6 +88,21 @@ def write_results(tasks: list[dict], results: dict) -> None:
         json.dump(payload, f, ensure_ascii=False)
 
 
+def write_inference_log() -> None:
+    # Best-effort: the log must never endanger results.json (which is already written).
+    try:
+        totals = {
+            "prompt_tokens": sum(c.get("prompt_tokens", 0) for c in CALL_LOG),
+            "completion_tokens": sum(c.get("completion_tokens", 0) for c in CALL_LOG),
+            "calls": len(CALL_LOG),
+        }
+        path = os.path.join(os.path.dirname(OUTPUT_PATH) or ".", "inference_log.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"calls": CALL_LOG, "totals": totals}, f, ensure_ascii=False)
+    except Exception as error:
+        log("WARN", note="could not write inference log", error=str(error)[:200])
+
+
 def main() -> None:
     with open(INPUT_PATH, encoding="utf-8") as f:
         raw = json.load(f)
@@ -93,6 +117,7 @@ def main() -> None:
     except Exception as error:
         log("FATAL", error=str(error)[:300])
     write_results(tasks, results)
+    write_inference_log()
     log("DONE", tasks=len(tasks), answered=sum(1 for a in results.values() if a),
         elapsed_s=round(time.monotonic() - START, 1))
 

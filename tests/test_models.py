@@ -22,7 +22,7 @@ def test_three_distinct_sizes():
 
 def test_single_model_fills_all_tiers():
     t = tiers("acc/qwen3-30b-a3b")
-    assert t["SMALL"] == t["MEDIUM"] == t["LARGE"] == "acc/qwen3-30b-a3b"
+    assert t["SMALL"] == t["MEDIUM"] == t["LARGE"] == t["CODE"] == "acc/qwen3-30b-a3b"
 
 
 def test_moe_counts_total_params():
@@ -65,9 +65,24 @@ def test_track1_launch_day_models():
     t = tiers("minimax-m3,kimi-k2p7-code,gemma-4-31b-it,gemma-4-26b-a4b-it,gemma-4-31b-it-nvfp4")
     assert t["SMALL"] == "gemma-4-26b-a4b-it"          # 4B active params -> cheapest
     assert t["MEDIUM"] == "gemma-4-31b-it"             # full precision, NOT the -nvfp4 build
-    assert t["LARGE"] in ("minimax-m3", "kimi-k2p7-code")  # a large MoE for the retry tier
+    # kimi is claimed by CODE, so LARGE is deterministic (was an env-order tie before).
+    assert t["LARGE"] == "minimax-m3"
+    assert t["CODE"] == "kimi-k2p7-code"
     # Neither gemma-31b size parse nor quantization must land nvfp4 in an accuracy tier.
     assert "nvfp4" not in t["MEDIUM"]
+
+
+def test_code_model_never_holds_a_general_tier():
+    # An unsized code MoE must not shadow the real LARGE pick.
+    t = tiers("acc/llama-8b,acc/llama-70b,acc/deepseek-coder-v2")
+    assert t["CODE"] == "acc/deepseek-coder-v2"
+    assert t["LARGE"] == "acc/llama-70b"
+    assert t["SMALL"] == "acc/llama-8b"
+
+
+def test_no_code_model_falls_back_to_medium():
+    t = tiers("acc/llama-8b,acc/llama-70b,acc/qwen-235b")
+    assert t["CODE"] == t["MEDIUM"] == "acc/llama-70b"
 
 
 def test_reasoning_detection_patterns():

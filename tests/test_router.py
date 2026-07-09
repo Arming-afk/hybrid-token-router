@@ -34,12 +34,18 @@ def test_ambiguous_prompts_defer_to_llm():
     # Genuinely ambiguous inputs must return None so main.py pays for an LLM classify
     # instead of guessing wrong. These should NOT resolve to a concrete category.
     ambiguous = [
-        "x = [1, 2, 3]\nprint(x[5])",  # code pasted with no fix/write verb
         "Each person has a different number of coins; using 2 clues, calculate who has the most.",
     ]
     for prompt in ambiguous:
         result = classify(prompt)
         assert result in (None, "logic"), f"{prompt!r} -> {result}"
+
+
+def test_pasted_code_defaults_to_debug():
+    # There is no "explain this code" category; pasted literal code with no write verb
+    # is a "here's my code, fix it" request. Defaulting to debug beats an LLM fallback
+    # that can silently degrade to factual on an empty/rate-limited response.
+    assert classify("x = [1, 2, 3]\nprint(x[5])") == "debug"
 
 
 def test_fallback_letter_parsing():

@@ -25,7 +25,14 @@ R = {
         r" feel\b"
         r"|\bwhat do people think\b"
         r"|\bsatisfied or dissatisfied\b"
-        r"|\bhappy or unhappy\b",
+        r"|\bhappy or unhappy\b"
+        # "tone/mood/emotion" of a text is a sentiment task, but only when paired with a
+        # classification verb — bare "tone of <literary work>" is a factual question.
+        r"|\b(classify|determine|identify|what is|what'?s|analy[sz]e|judge|assess)"
+        r".{0,25}\b(tone|mood|emotion|sentiment)\b"
+        # emotion-word either/or pairs beyond the fixed positive/negative wording
+        r"|\b(happy|glad|angry|sad|upset|excited|frustrated|pleased|annoyed)\s+or\s+"
+        r"(happy|glad|angry|sad|upset|excited|frustrated|pleased|annoyed|disappointed)\b",
         re.I,
     ),
     "summarization": re.compile(
@@ -37,9 +44,10 @@ R = {
     ),
     "ner": re.compile(
         r"named entit|\bNER\b"
-        r"|\b(extract|identify|find|list|tag|label|pull out|pick out)\b.{0,80}"
+        r"|\b(extract|identify|find|list|tag|label|pull out|pick out|highlight|name)\b.{0,80}"
         r"\b(persons?|people|organi[sz]ations?|\borgs?\b|compan(y|ies)|locations?|places?"
         r"|cit(y|ies)|countr(y|ies)|dates?|entit(y|ies))\b"
+        r"|\b(persons?|people|organi[sz]ations?|companies|locations?)\b.{0,60}\bnamed\b"
         r"|\bwho (is|are) (mentioned|named|listed|referenced)\b"
         r"|\b(which|what)\b.{0,60}\b(mentioned|referenced|named|listed|appear)\b",
         re.I,
@@ -55,18 +63,28 @@ STRONG_CODE = re.compile(
     r"|\)\s*\{|\bfor\b[^.\n]{0,40}:\s|\bwhile\b[^.\n]{0,30}:|\bSELECT\b[^.\n]{0,80}\bFROM\b"
 )
 WEAK_CODE = re.compile(
-    r"\bfunction\b|\breturn\b|\bclass \w|\bmethod\b|\bvariable\b|\bloop\b|\bregex\b"
+    r"\bcode\b|\bsnippet\b|\bfunction\b|\breturn\b|\bclass \w|\bmethod\b|\bvariable\b|\bloop\b|\bregex\b"
     r"|\bquery\b|\bscript\b|\balgorithm\b|\bsort\b|\bdecorator\b|\bSQL\b"
     r"|\berror handling\b|\bexception\b|\bhandler\b|\bendpoint\b|\bparser\b|\bAPI\b"
     r"|\bin (python|java|javascript|typescript|c\+\+|go|rust|ruby)\b",
     re.I,
 )
-WRITE = re.compile(r"\b(write|implement|create|build|generate|develop|complete)\b", re.I)
+WRITE = re.compile(
+    r"\b(write|implement|create|build|generate|develop|complete)\b"
+    r"|\bgive me\b|\bprovide\b|\bshow me\b",
+    re.I,
+)
 # STRONG_FIX names existing broken code and beats a co-occurring WRITE verb.
 STRONG_FIX = re.compile(
     r"\bfix\b|\bdebug\b|\bbugs?\b|\bbuggy\b|\bbroken\b|off-by-one"
-    r"|doesn'?t work|not working|never (terminates|returns|works|ends)"
-    r"|should\b.{0,50}\bbut\b|why (does|do|is|are|doesn'?t)",
+    r"|doesn'?t work|not working|never (terminates|returns|works|ends|stops)"
+    r"|should\b.{0,50}\bbut\b"
+    r"|\bspot the (problem|bug|error|issue)\b|\bwhat'?s? (is )?wrong\b|\bwhat is wrong\b"
+    r"|\bthrows? (an?|the)?\s*\w*(error|exception)\b|\braises? (an?|the)?\s*\w*(error|exception)\b"
+    # "why does/do/is/are" alone is an ordinary explanatory question ("why do we use
+    # X?"); only treat it as a bug report when it's paired with a failure/behavior word.
+    r"|why (does|do|is|are|doesn'?t)\b.{0,40}\b(work|returns?|crash(es)?|fails?|raise"
+    r"s?|throws?|breaks?|output|print|behave|terminate|loop|error|exception)\b",
     re.I,
 )
 # FIX is the wider repair vocabulary, only consulted once no WRITE verb is present.
@@ -81,23 +99,37 @@ MATH_SIGNAL = re.compile(
     r"\bcalculate\b|\bcompute\b|\bconvert\b|\bhow (many|much|old|far|fast|long)\b"
     r"|\bpercent(age)?\b|%|\baverage of\b|\bsum of\b|\btotal\b|\bcompound\b|\binterest\b"
     r"|\bdiscount|\bprofit\b|\bsales tax\b|\bper (hour|day|week|month|year|item|unit|person)\b"
-    r"|\bspeed\b|\bratio\b|\bproportion\b|\btimes\b|\bdivided\b|\bmultipl|\bplus\b|\bminus\b"
-    r"|\barea\b|\bperimeter\b|\bvolume\b|[+×÷]",
+    r"|\bspeed\b|\bratio\b|\bproportion\b|\btimes\b|\bdivided?\b|\bmultipl|\bplus\b|\bminus\b"
+    r"|\barea\b|\bperimeter\b|\bvolume\b|[+×÷]"
+    r"|\bhalf of\b|\bquarter of\b|\bdozen\b|\bdouble[sd]?\b|\btriple[sd]?\b|\btwice\b"
+    r"|\bsquare root\b|\bsquared\b|\bcubed\b|\bremainder\b|\bquotient\b|\bproduct of\b"
+    r"|\bround(ed)?\b.{0,20}\bdecimal"
+    # word-problem phrasings that describe an arithmetic relation between numbers
+    r"|\badds? (up )?to\b|\bdiffer by\b|\bincreases? by\b"
+    r"|\bdecreases? by\b|\bgrows? by\b|\bhow old\b",
     re.I,
 )
 
 # --- logic --------------------------------------------------------------------
 STRONG_LOGIC = re.compile(
     r"\b(lying|liar|knight|knave)\b|truth[- ]?tell|\btruth\b|\bclues?\b|\bconstraints?\b"
-    r"|\bdeduce\b|\bseat(ed|ing|s)?\b|\barrangement\b|\beach\b.{0,40}\bdifferent\b"
+    r"|\bdeduce\b|\bseat(ed|ing)\b|\barrangement\b|\beach\b.{0,40}\bdifferent\b"
     r"|\blogic puzzle\b",
     re.I,
 )
+# Excludes common factual-trivia subjects ("tallest mountain in the world") so a bare
+# superlative question about a real-world thing doesn't get mistaken for a puzzle about
+# named people/items being ranked.
+NOT_TRIVIA_SUBJECT = (
+    r"(?!.{0,25}\b(mountain|animal|country|countries|ocean|river|planet|building|city"
+    r"|structure|lake|desert|bird|fish|tree|species|continent|state|volcano|waterfall)\b)"
+)
 WEAK_LOGIC = re.compile(
-    r"\brow of\b|\bnext to\b|\badjacent\b|\b(directly |immediately )?(left|right) of\b"
+    r"\brow of\b|\bin a row\b|\bsits? in\b|\bstand(s|ing)? in\b|\badjacent\b"
+    r"|\b(directly |immediately )?(left|right) of\b"
     r"|\bfinish(es|ed)?\b.{0,20}\b(before|after|first|last)\b"
-    r"|\bwho (finished|came|won|wins|placed|ranked|owns|is next)\b"
-    r"|\bwho is (the )?(tallest|shortest|oldest|youngest|fastest|slowest|biggest|smallest"
+    r"|\bwho (finished|came|won|wins|placed|ranked|owns|is next)\b(?!\s+to\b)"
+    r"|\bwho is (the )?" + NOT_TRIVIA_SUBJECT + r"(tallest|shortest|oldest|youngest|fastest|slowest|biggest|smallest"
     r"|richest|first|last)\b"
     r"|\bmore than\b.{0,30}\bless than\b|\bfirst to last\b"
     r"|\brank\b.{0,40}\b(first|last|order|from|to)\b|\b(all|some|no)\b \w+ \bare\b",
@@ -120,7 +152,10 @@ def classify(prompt: str) -> str | None:
             return "debug"
         if WRITE.search(prompt):
             return "codegen"
-        return None  # code pasted with no clear fix/write intent
+        # Literal code pasted with no write intent is almost always a "here's my code,
+        # fix it" request; debug is a far safer default than an LLM fallback that can
+        # silently degrade to factual on an empty/rate-limited response.
+        return "debug"
 
     strong_logic = bool(STRONG_LOGIC.search(prompt))
     has_logic = strong_logic or bool(WEAK_LOGIC.search(prompt))
