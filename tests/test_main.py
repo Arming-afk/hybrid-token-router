@@ -22,14 +22,20 @@ async def echo_complete(model, messages, max_tokens):
     return f"answer from {model}", {"prompt_tokens": 1, "completion_tokens": 1}
 
 
+last_run_dir = None  # tmp dir of the most recent run_pipeline call, for log assertions
+
+
 def run_pipeline(tasks_payload, fake_complete):
     """Run main.main() against a fake client.complete; return parsed results.json."""
+    global last_run_dir
     tmp = tempfile.mkdtemp()
+    last_run_dir = tmp
     in_path, out_path = os.path.join(tmp, "tasks.json"), os.path.join(tmp, "results.json")
     with open(in_path, "w", encoding="utf-8") as f:
         json.dump(tasks_payload, f)
     saved = (client.complete, main.INPUT_PATH, main.OUTPUT_PATH)
     client.complete, main.INPUT_PATH, main.OUTPUT_PATH = fake_complete, in_path, out_path
+    main.CALL_LOG.clear()
     try:
         main.main()
         with open(out_path, encoding="utf-8") as f:
@@ -44,6 +50,16 @@ def test_happy_path_answers_every_task():
     rows = run_pipeline(tasks, echo_complete)
     assert [r["task_id"] for r in rows] == ["a", "b"]
     assert all(r["answer"].startswith("answer from ") for r in rows)
+
+
+def test_inference_log_written_next_to_results():
+    tasks = [{"task_id": "a", "prompt": "What is the capital of France?"}]
+    run_pipeline(tasks, echo_complete)
+    with open(os.path.join(last_run_dir, "inference_log.json"), encoding="utf-8") as f:
+        log = json.load(f)
+    assert log["totals"]["calls"] == 1
+    assert log["calls"][0]["task_id"] == "a"
+    assert "prompt_tokens" in log["calls"][0]
 
 
 def test_empty_tasks_file_writes_empty_list():
@@ -83,7 +99,7 @@ def test_empty_completion_retries_on_larger_tier():
     rows = run_pipeline([{"task_id": "a", "prompt": "What is the capital of France?"}],
                         empty_then_text)
     assert rows[0]["answer"] == "recovered"
-    assert calls == ["acc/mid-7b", "acc/big-70b"]  # factual=MEDIUM, retry escalates to LARGE
+    assert calls == ["acc/big-70b", "acc/mid-7b"]  # factual=LARGE, retry falls back to MEDIUM
 
 
 def test_ambiguous_prompt_pays_llm_classifier_first():

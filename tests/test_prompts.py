@@ -6,51 +6,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.prompts import CATEGORIES, SPEC, postprocess, render  # noqa: E402
 
+VALID_TIERS = {"SMALL", "MEDIUM", "LARGE", "CODE"}
+
 
 def test_render_returns_tier_and_cap_from_spec():
     for category in CATEGORIES:
         messages, max_tokens, tier = render(category, "some prompt")
         assert max_tokens == SPEC[category]["max_tokens"]
         assert tier == SPEC[category]["tier"]
-        assert messages == [{"role": "user",
-                             "content": f"some prompt\n\n{SPEC[category]['instruction']}"}]
+        assert tier in VALID_TIERS
+        assert messages == [
+            {"role": "system", "content": SPEC[category]["instruction"]},
+            {"role": "user", "content": "some prompt"},
+        ]
 
 
-def test_postprocess_extracts_after_last_answer_marker():
+def test_every_instruction_demands_english():
+    # Harness hard rule: all responses must be in English.
+    for category in CATEGORIES:
+        assert "English" in SPEC[category]["instruction"], category
+
+
+def test_postprocess_passes_answers_through_untouched():
+    # The gate-passing reference config hands the judge the full answer, steps and
+    # "Answer:" line included; postprocess must only trim whitespace.
     text = "Step 1: add.\nStep 2: multiply.\nAnswer: 42"
-    assert postprocess("math", text) == "42"
+    assert postprocess("math", text) == text
+    assert postprocess("logic", "  reasoning...\nanswer :  Carol  ") == "reasoning...\nanswer :  Carol"
 
 
-def test_postprocess_is_case_insensitive_and_tolerates_no_space():
-    assert postprocess("math", "reasoning...\nANSWER:7") == "7"
-    assert postprocess("logic", "reasoning...\nanswer :  Carol") == "Carol"
-
-
-def test_postprocess_uses_last_marker_when_multiple_present():
-    # A model that echoes "Answer:" while reasoning, then gives the real one at the end.
-    text = "If Answer: were X that would be wrong.\nAnswer: Y"
-    assert postprocess("math", text) == "Y"
-
-
-def test_postprocess_falls_back_to_full_text_when_marker_missing():
-    assert postprocess("math", "  42  ") == "42"
-
-
-def test_postprocess_falls_back_when_marker_has_no_content_after_it():
-    assert postprocess("math", "Answer:") == "Answer:"
-
-
-def test_postprocess_leaves_non_math_logic_categories_untouched():
-    assert postprocess("factual", "  Paris.  ") == "Paris."
-    assert postprocess("codegen", "Answer: not stripped here") == "Answer: not stripped here"
+def test_postprocess_strips_whitespace_for_all_categories():
+    for category in CATEGORIES:
+        assert postprocess(category, "  body  ") == "body"
 
 
 if __name__ == "__main__":
-    test_render_returns_tier_and_cap_from_spec()
-    test_postprocess_extracts_after_last_answer_marker()
-    test_postprocess_is_case_insensitive_and_tolerates_no_space()
-    test_postprocess_uses_last_marker_when_multiple_present()
-    test_postprocess_falls_back_to_full_text_when_marker_missing()
-    test_postprocess_falls_back_when_marker_has_no_content_after_it()
-    test_postprocess_leaves_non_math_logic_categories_untouched()
+    fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    for fn in fns:
+        fn()
     print("prompts: PASS")

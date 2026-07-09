@@ -7,7 +7,14 @@ from openai import APIStatusError, AsyncOpenAI
 
 RETRIES = 2
 RATE_LIMIT_RETRIES = 4  # 429s get their own, more patient budget
-CALL_TIMEOUT_SECONDS = 60
+CALL_TIMEOUT_SECONDS = 25  # harness hard rule: response time per request must stay under 30s
+
+# Reasoning models (e.g. minimax-m3) bill hidden reasoning tokens and can burn the
+# whole max_tokens budget thinking, returning blank content on hard prompts. "none"
+# suppresses that. Sent to every model by default; one rejects it as an unknown
+# param, _NO_EFFORT_PARAM remembers that model and stops sending it.
+REASONING_EFFORT = os.environ.get("REASONING_EFFORT", "none")
+_NO_EFFORT_PARAM: set[str] = set()
 
 _client = None
 
@@ -53,6 +60,8 @@ async def complete(model: str, messages: list[dict], max_tokens: int) -> tuple[s
     failures = 0
     rate_hits = 0
     while True:
+        sent_effort = bool(REASONING_EFFORT) and model not in _NO_EFFORT_PARAM
+        kwargs = {"reasoning_effort": REASONING_EFFORT} if sent_effort else {}
         try:
             response = await asyncio.wait_for(
                 get_client().chat.completions.create(
@@ -60,6 +69,7 @@ async def complete(model: str, messages: list[dict], max_tokens: int) -> tuple[s
                     messages=messages,
                     max_tokens=max_tokens,
                     temperature=0,
+                    **kwargs,
                 ),
                 timeout=CALL_TIMEOUT_SECONDS,
             )
@@ -70,6 +80,11 @@ async def complete(model: str, messages: list[dict], max_tokens: int) -> tuple[s
             }
         except Exception as error:
             last_error = error
+            if sent_effort and _is_permanent(error):
+                # Model rejected reasoning_effort as an unknown param; drop it for
+                # this model and retry immediately, free, before the failure budget.
+                _NO_EFFORT_PARAM.add(model)
+                continue
             if _is_permanent(error):
                 break
             if _is_rate_limit(error):
