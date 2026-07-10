@@ -201,6 +201,80 @@ def classify(prompt: str) -> str | None:
     return "factual"
 
 
+# --- deterministic arithmetic (zero tokens) -------------------------------------
+# Pure-calculation prompts ("What is 847 x 23?", "Calculate 15% of 240") are solved
+# in-process: no API call, no billed tokens, no hallucination risk. The charset gate
+# rejects anything containing narrative words, so word problems structurally cannot
+# trigger it and flow through normal routing untouched.
+_ARITH_LEAD = re.compile(r"^(?:what\s+is|what'?s|calculate|compute|evaluate|solve)\b[: ]*", re.I)
+_PERCENT_OF = re.compile(r"^([\d,]+(?:\.\d+)?)\s*(?:%|percent)\s+of\s+([\d,]+(?:\.\d+)?)$", re.I)
+_WORD_OPS = [
+    ("multiplied by", "*"), ("divided by", "/"), ("times", "*"),
+    ("plus", "+"), ("minus", "-"), (" x ", " * "), ("×", "*"), ("÷", "/"),
+]
+_ARITH_CHARSET = re.compile(r"^[\d\s+\-*/.(),]+$")
+
+
+def _eval_arith(expr: str) -> float | None:
+    """AST-whitelist arithmetic: + - * / and parentheses only. No eval()."""
+    import ast
+
+    def walk(node):
+        if isinstance(node, ast.Expression):
+            return walk(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return float(node.value)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = walk(node.operand)
+            return value if isinstance(node.op, ast.UAdd) else -value
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+            left, right = walk(node.left), walk(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if right == 0:
+                raise ZeroDivisionError
+            return left / right
+        raise ValueError("disallowed node")
+
+    try:
+        return walk(ast.parse(expr, mode="eval"))
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+        return None
+
+
+def _format_number(value: float) -> str:
+    if abs(value) < 1e15 and float(value).is_integer():
+        return str(int(value))
+    return f"{round(value, 6):g}"
+
+
+def deterministic_math_answer(prompt: str) -> str | None:
+    """Return the computed answer for a pure-arithmetic prompt, else None."""
+    text = (prompt or "").strip().strip("?!. \t\n").lower()
+    text = _ARITH_LEAD.sub("", text).strip().strip("?!. ")
+    percent = _PERCENT_OF.match(text)
+    if percent:
+        pct = float(percent.group(1).replace(",", ""))
+        base = float(percent.group(2).replace(",", ""))
+        return f"Answer: {_format_number(base * pct / 100.0)}"
+    for word, symbol in _WORD_OPS:
+        text = text.replace(word, symbol)
+    if not _ARITH_CHARSET.match(text):
+        return None
+    expr = text.replace(",", "")
+    # A lone number ("What is 42?") is not a calculation — require an operator.
+    if not any(op in expr for op in "+-*/"):
+        return None
+    value = _eval_arith(expr)
+    if value is None:
+        return None
+    return f"Answer: {_format_number(value)}"
+
+
 LETTER_TO_CATEGORY = {
     "A": "factual",
     "B": "math",

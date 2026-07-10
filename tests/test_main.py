@@ -99,7 +99,73 @@ def test_empty_completion_retries_on_larger_tier():
     rows = run_pipeline([{"task_id": "a", "prompt": "What is the capital of France?"}],
                         empty_then_text)
     assert rows[0]["answer"] == "recovered"
-    assert calls == ["acc/mid-7b", "acc/big-70b"]  # factual=MEDIUM, retry escalates to LARGE
+    # factual=CODE (no code model in the test env -> falls back to MEDIUM's model),
+    # retry escalates to LARGE
+    assert calls == ["acc/mid-7b", "acc/big-70b"]
+
+
+def test_truncated_answer_escalates_like_blank():
+    calls = []
+
+    async def truncated_then_text(model, messages, max_tokens):
+        calls.append(model)
+        if len(calls) == 1:
+            return "def half_a_function(", {"truncated": True}
+        return "full answer", {}
+
+    rows = run_pipeline([{"task_id": "a", "prompt": "What is the capital of France?"}],
+                        truncated_then_text)
+    assert rows[0]["answer"] == "full answer"
+    assert calls == ["acc/mid-7b", "acc/big-70b"]
+
+
+def test_truncated_answer_kept_when_rescue_is_empty():
+    async def truncated_then_blank(model, messages, max_tokens):
+        if not hasattr(truncated_then_blank, "n"):
+            truncated_then_blank.n = 0
+        truncated_then_blank.n += 1
+        if truncated_then_blank.n == 1:
+            return "partial but present", {"truncated": True}
+        return "", {}
+
+    rows = run_pipeline([{"task_id": "a", "prompt": "What is the capital of France?"}],
+                        truncated_then_blank)
+    assert rows[0]["answer"] == "partial but present"
+
+
+def test_pure_arithmetic_never_calls_the_api():
+    calls = []
+
+    async def spy(model, messages, max_tokens):
+        calls.append(model)
+        return "should not be reached", {}
+
+    rows = run_pipeline([
+        {"task_id": "a", "prompt": "What is 847 x 23?"},
+        {"task_id": "b", "prompt": "Calculate 15% of 240."},
+        {"task_id": "c", "prompt": "What is 1,200 plus 300?"},
+    ], spy)
+    by_id = {r["task_id"]: r["answer"] for r in rows}
+    assert by_id["a"] == "Answer: 19481"
+    assert by_id["b"] == "Answer: 36"
+    assert by_id["c"] == "Answer: 1500"
+    assert calls == []
+
+
+def test_word_problems_still_go_to_the_api():
+    calls = []
+
+    async def spy(model, messages, max_tokens):
+        calls.append(model)
+        return "model answer", {}
+
+    rows = run_pipeline([
+        {"task_id": "a", "prompt": "A shop sells pens at $3 each. How much do 12 pens cost?"},
+        {"task_id": "b", "prompt": "What is 42?"},
+        {"task_id": "c", "prompt": "What is photosynthesis?"},
+    ], spy)
+    assert all(r["answer"] == "model answer" for r in rows)
+    assert len(calls) == 3
 
 
 def test_ambiguous_prompt_pays_llm_classifier_first():

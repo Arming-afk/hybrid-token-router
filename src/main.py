@@ -30,37 +30,52 @@ def log(event: str, **fields) -> None:
 
 
 async def try_complete(task_id: str, category: str, model: str,
-                       messages: list[dict], max_tokens: int) -> str:
+                       messages: list[dict], max_tokens: int) -> tuple[str, bool]:
+    """Return (text, truncated). Truncated answers are likely wrong (code cut
+    mid-function, missing Answer line) — callers escalate them like blanks."""
     try:
         text, usage = await client.complete(model, messages, max_tokens)
         log("USAGE", task_id=task_id, category=category, model=model, **usage)
         CALL_LOG.append({"task_id": task_id, "category": category, "model": model, **usage})
-        return text
+        return text, bool(usage.get("truncated"))
     except Exception as error:
         log("ERROR", task_id=task_id, model=model, error=str(error)[:200])
-        return ""
+        return "", False
 
 
 async def llm_classify(task_id: str, prompt: str, tiers: dict) -> str:
-    text = await try_complete(task_id, "router", tiers["SMALL"],
-                              router.fallback_messages(prompt), max_tokens=2)
+    # The 2-token cap makes finish_reason=length expected here — ignore the flag.
+    text, _ = await try_complete(task_id, "router", tiers["SMALL"],
+                                 router.fallback_messages(prompt), max_tokens=2)
     return router.parse_fallback_letter(text)
 
 
 async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: dict) -> None:
     task_id, prompt = task["task_id"], task["prompt"]
     async with sem:
+        # Pure arithmetic never touches the API: solved in-process for zero tokens,
+        # before classification so it works even when the router reads "847 x 23"
+        # as factual.
+        det = router.deterministic_math_answer(prompt)
+        if det is not None:
+            log("LOCAL", task_id=task_id, solver="deterministic-arithmetic")
+            results[task_id] = det
+            return
         category = router.classify(prompt)
         if category is None:
             category = await llm_classify(task_id, prompt, tiers)
         messages, max_tokens, tier = prompts.render(category, prompt)
-        text = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
-        if not text.strip():
+        text, truncated = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
+        if not text.strip() or truncated:
             retry_tier = "LARGE" if tier != "LARGE" else "MEDIUM"
             # LARGE may be a reasoning model whose billed hidden thinking competes with
             # the visible answer for max_tokens; give the rescue attempt enough room.
             retry_max = max(max_tokens, 700)
-            text = await try_complete(task_id, category, tiers[retry_tier], messages, retry_max)
+            retry_text, _ = await try_complete(task_id, category, tiers[retry_tier],
+                                               messages, retry_max)
+            # An empty rescue must not erase a truncated-but-present first answer.
+            if retry_text.strip():
+                text = retry_text
         results[task_id] = prompts.postprocess(category, text)
 
 

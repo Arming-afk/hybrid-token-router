@@ -74,9 +74,14 @@ async def complete(model: str, messages: list[dict], max_tokens: int) -> tuple[s
                 timeout=CALL_TIMEOUT_SECONDS,
             )
             usage = response.usage
-            return response.choices[0].message.content or "", {
+            choice = response.choices[0]
+            return choice.message.content or "", {
                 "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
                 "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                # A cap-truncated answer (code cut mid-function, missing Answer
+                # line) is likely wrong; callers escalate it like a blank instead
+                # of submitting it.
+                "truncated": getattr(choice, "finish_reason", None) == "length",
             }
         except Exception as error:
             last_error = error

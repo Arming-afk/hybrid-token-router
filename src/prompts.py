@@ -6,12 +6,13 @@ and every tier bump must be justified by a failed eval at the cheaper tier.
 Current values descend from the gate-PASSING config of the 2nd-place Track 1 entry
 (KaananeTaha/AMD-AI-Hackathon, analyzed 2026-07-09; full rationale in
 docs/eval-results.md), reshaped by the stage-2 cuts below: today NOTHING sits on
-LARGE (minimax-m3 bills a ~100/call hidden prompt tax) — factual/math/logic are on
-MEDIUM (gemma-4-31b-it), debug/codegen on the CODE tier (kimi-k2p7-code),
-sentiment/summarization/ner on SMALL. factual remains the router's misroute
-default; since the 2026-07-10 router hardening (dev set 187/187) that insurance is
-carried by routing quality rather than by the biggest model. LARGE is still used
-by main.py's empty-completion escalation retry.
+LARGE (minimax-m3 bills a ~100/call hidden prompt tax) — factual/math/logic and
+debug/codegen all run on the CODE tier (kimi-k2p7-code; MEDIUM's gemma-31b has no
+serverless deployment and 404s at grading), sentiment/summarization/ner on SMALL.
+factual remains the router's misroute default; since the 2026-07-10 router
+hardening (dev set 187/187) that insurance is carried by routing quality rather
+than by the biggest model. LARGE is still used by main.py's empty-completion and
+truncation escalation retry.
 
 Stage 2 (after the 84.2%/5273-token gate-passing run, image 6f01e64), one cut per
 submission so each result cleanly measures one variable:
@@ -58,23 +59,36 @@ submission so each result cleanly measures one variable:
   correctness. Caps are now hard budget enforcers (billed = generated, so a tight
   cap bounds worst-case spend), sized ~1.5-2x the instructed length so an obedient
   answer never truncates. Rollback anchor: image 94619a7 (94.7%, 5095).
+- Moonshot fix (resubmission after run 14's INFRA_ERROR): factual/math/logic tier
+  MEDIUM -> CODE (kimi). Community-confirmed intel (docs/eval-results.md, LocalFirst
+  section): gemma-4-31b-it has NO serverless support and 404s at grading too, so
+  "MEDIUM" was silently escalating every call to LARGE minimax via the blank-answer
+  retry — still paying the prompt tax this bundle meant to kill, plus a wasted
+  roundtrip. kimi is proven alive in every scored run (debug/codegen ran on it),
+  has no prompt tax, and the 100%-at-3753 competitor answered every remote category
+  on it. Also new: pure-arithmetic prompts short-circuit to a deterministic
+  in-process solver (0 tokens, router.deterministic_math_answer), and truncated
+  answers (finish_reason=length) escalate instead of being submitted.
 """
 
 _BASE = "English. Terse; no preamble."
 
 SPEC = {
     "factual": {
-        # MEDIUM: no minimax prompt tax; misroute-default duty moves here with it —
-        # acceptable now that the hardened router (187/187) rarely misroutes.
-        "tier": "MEDIUM",
+        # CODE (kimi): no minimax prompt tax, and — unlike MEDIUM's gemma-31b, which
+        # has no serverless deployment and 404s at grading — actually reachable.
+        # Misroute-default duty rides on routing quality (hardened router, 187/187).
+        "tier": "CODE",
         # Cap ~1.5x the instructed 50 words so an obedient answer never truncates.
         "max_tokens": 120,
         "instruction": f"{_BASE} Answer clearly in under 50 words.",
     },
     "math": {
-        # The 2 short steps stay: they double as chain-of-thought for the MEDIUM
-        # model; answer-only would save ~150 tokens/run at real correctness risk.
-        "tier": "MEDIUM",
+        # The 2 short steps stay: they double as chain-of-thought; answer-only
+        # would save ~150 tokens/run at real correctness risk. Pure-arithmetic
+        # prompts never get here — main.py short-circuits them to the free
+        # deterministic solver first.
+        "tier": "CODE",
         "max_tokens": 150,
         "instruction": f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line.",
     },
@@ -111,8 +125,10 @@ SPEC = {
         ),
     },
     "logic": {
-        # Same shape as math: steps kept as chain-of-thought for MEDIUM.
-        "tier": "MEDIUM",
+        # Same shape as math: steps kept as chain-of-thought; CODE for the same
+        # reachability reason (the LocalFirst competitor routed seating puzzles to
+        # kimi specifically because it solves them reliably).
+        "tier": "CODE",
         "max_tokens": 150,
         "instruction": (
             f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line."
