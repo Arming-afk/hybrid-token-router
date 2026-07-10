@@ -99,7 +99,7 @@ def test_empty_completion_retries_on_larger_tier():
     rows = run_pipeline([{"task_id": "a", "prompt": "What is the capital of France?"}],
                         empty_then_text)
     assert rows[0]["answer"] == "recovered"
-    assert calls == ["acc/big-70b", "acc/mid-7b"]  # factual=LARGE, retry falls back to MEDIUM
+    assert calls == ["acc/mid-7b", "acc/big-70b"]  # factual=MEDIUM, retry escalates to LARGE
 
 
 def test_ambiguous_prompt_pays_llm_classifier_first():

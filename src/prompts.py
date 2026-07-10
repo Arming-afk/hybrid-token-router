@@ -3,15 +3,15 @@
 This is the main tuning surface: every token in an instruction must earn its place,
 and every tier bump must be justified by a failed eval at the cheaper tier.
 
-Current values start from the gate-PASSING config of the 2nd-place Track 1 entry
+Current values descend from the gate-PASSING config of the 2nd-place Track 1 entry
 (KaananeTaha/AMD-AI-Hackathon, analyzed 2026-07-09; full rationale in
-docs/eval-results.md) — factual/math/logic on LARGE (minimax-m3, made safe by
-client.py's reasoning_effort="none") — except math/logic, moved to MEDIUM by
-Phase C move #1 below. debug/codegen sit on the CODE tier
-(kimi-k2p7-code), sentiment/summarization/ner on SMALL. factual doubles as the
-router's misroute default, so it deliberately sits on the strongest tier — any
-false positive lands on the most capable model instead of failing the gate.
-Their measured cost on the real harness models: ~150 tokens/task, all correct.
+docs/eval-results.md), reshaped by the stage-2 cuts below: today NOTHING sits on
+LARGE (minimax-m3 bills a ~100/call hidden prompt tax) — factual/math/logic are on
+MEDIUM (gemma-4-31b-it), debug/codegen on the CODE tier (kimi-k2p7-code),
+sentiment/summarization/ner on SMALL. factual remains the router's misroute
+default; since the 2026-07-10 router hardening (dev set 187/187) that insurance is
+carried by routing quality rather than by the biggest model. LARGE is still used
+by main.py's empty-completion escalation retry.
 
 Stage 2 (after the 84.2%/5273-token gate-passing run, image 6f01e64), one cut per
 submission so each result cleanly measures one variable:
@@ -44,36 +44,53 @@ submission so each result cleanly measures one variable:
   'Answer: <value>' line. MEDIUM (gemma-4-31b-it) is unreachable with the public
   key (404, re-probed 2026-07-10), so this is a blind experiment: if the gate
   falls, revert and re-submit the cut #3 anchor image (86cf241) immediately.
+- Moonshot (2026-07-10, after run 13's 94.7%/5095 and rank 1 posting 2600/84%):
+  strategy shift — ranking is by tokens among gate-passers, so accuracy above the
+  gate is wasted spend; run 13's +2-task headroom (bought by the router hardening)
+  is deliberately converted into token cuts, several at once. Bundle: factual ->
+  MEDIUM at "under 50 words" (kills the minimax tax on the biggest category AND
+  halves its output; the old 60-word failures predate the router fix, whose
+  misroutes were likely the real casualties), sentiment -> label only, debug ->
+  corrected code only (accepting the judge-intent risk previously dodged),
+  summarization defaults to <=3 sentences when the task states no length. math/
+  logic keep their 2 short steps ON PURPOSE: the steps double as chain-of-thought
+  for the MEDIUM model — answer-only would save ~150 tokens and risk math
+  correctness. Caps are now hard budget enforcers (billed = generated, so a tight
+  cap bounds worst-case spend), sized ~1.5-2x the instructed length so an obedient
+  answer never truncates. Rollback anchor: image 94619a7 (94.7%, 5095).
 """
 
 _BASE = "English. Terse; no preamble."
 
 SPEC = {
     "factual": {
-        "tier": "LARGE",
-        "max_tokens": 300,
-        "instruction": f"{_BASE} Answer clearly in under 120 words.",
+        # MEDIUM: no minimax prompt tax; misroute-default duty moves here with it —
+        # acceptable now that the hardened router (187/187) rarely misroutes.
+        "tier": "MEDIUM",
+        # Cap ~1.5x the instructed 50 words so an obedient answer never truncates.
+        "max_tokens": 120,
+        "instruction": f"{_BASE} Answer clearly in under 50 words.",
     },
     "math": {
-        # MEDIUM = gemma-4-31b-it: dodges minimax's ~100/call prompt tax. Instruction
-        # and cap unchanged on purpose — the tier is the single variable this
-        # submission measures.
+        # The 2 short steps stay: they double as chain-of-thought for the MEDIUM
+        # model; answer-only would save ~150 tokens/run at real correctness risk.
         "tier": "MEDIUM",
-        "max_tokens": 400,
+        "max_tokens": 150,
         "instruction": f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line.",
     },
     "sentiment": {
         "tier": "SMALL",
-        "max_tokens": 120,
+        "max_tokens": 30,
         "instruction": (
-            f"{_BASE} Label positive, negative, or neutral, then justify in one line."
+            f"{_BASE} One word: positive, negative, or neutral."
         ),
     },
     "summarization": {
         "tier": "SMALL",
         "max_tokens": 220,
         "instruction": (
-            f"{_BASE} Output only the summary; obey any stated length/format constraint."
+            f"{_BASE} Output only the summary; obey any stated length/format "
+            f"constraint, else at most 3 sentences."
         ),
     },
     "ner": {
@@ -85,17 +102,18 @@ SPEC = {
         ),
     },
     "debug": {
+        # Bug-name sentence dropped in the moonshot: the judge's category description
+        # says "identify AND correct", so this knowingly spends gate headroom.
         "tier": "CODE",
-        "max_tokens": 520,
+        "max_tokens": 450,
         "instruction": (
-            f"{_BASE} Name the bug in one sentence, then the corrected code in one "
-            f"fenced block."
+            f"{_BASE} Only the corrected code, in one fenced block. No comments."
         ),
     },
     "logic": {
-        # Moves with math (same Phase C experiment); see the note on math's tier.
+        # Same shape as math: steps kept as chain-of-thought for MEDIUM.
         "tier": "MEDIUM",
-        "max_tokens": 420,
+        "max_tokens": 150,
         "instruction": (
             f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line."
         ),

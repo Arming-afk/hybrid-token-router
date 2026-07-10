@@ -51,6 +51,7 @@ The harness gives one number per submission — treat each run as one eval data 
 | 12 | `3a7f0e7` | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | **~78.9%** (15/19) | gate FAILED — but same roll as the anchor's own re-roll (run 11), so **inconclusive as accuracy evidence** |
 
 | 13 | `94619a7` | router hardening (5 false-positive classes fixed, dev 187/187) + Phase C move #1 + cut #3 — submitted as "latest tag at submit time", not the intended `3a7f0e7` re-roll | **94.7%** (18/19) | **gate PASSED, 5095 tokens — best accuracy ever** |
+| 14 | _(queued)_ | **Moonshot bundle** (rank 1 posted 2600/84% — accuracy above the gate is wasted spend, so run 13's +2 headroom is converted to cuts): factual → MEDIUM + "under 50 words" (cap 120); sentiment → label only (cap 30); debug → corrected code only, no comments (cap 450); summarization → ≤3-sentence default; math/logic caps → 150 (2 steps kept as CoT for MEDIUM); nothing on LARGE. Predicted −1100–1600 → ~3500–4000. Rollback anchor: `94619a7` | | |
 
 Run 13 lessons (2026-07-10):
 - **The router fix is validated on the real judge set**: +2–3 tasks over the 15/19 band,
