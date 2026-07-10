@@ -52,7 +52,21 @@ The harness gives one number per submission — treat each run as one eval data 
 
 | 13 | `94619a7` | router hardening (5 false-positive classes fixed, dev 187/187) + Phase C move #1 + cut #3 — submitted as "latest tag at submit time", not the intended `3a7f0e7` re-roll | **94.7%** (18/19) | **gate PASSED, 5095 tokens — best accuracy ever** |
 | 14 | `1a4947a` | **Moonshot bundle** (rank 1 posted 2600/84% — accuracy above the gate is wasted spend, so run 13's +2 headroom is converted to cuts): factual → MEDIUM + "under 50 words" (cap 120); sentiment → label only (cap 30); debug → corrected code only, no comments (cap 450); summarization → ≤3-sentence default; math/logic caps → 150 (2 steps kept as CoT); nothing on LARGE | **INFRA_ERROR** | not scored — image verified pullable (200) and CI green, so most likely a premature submit inside the ~30s build window or a transient harness failure |
-| 15 | _(queued)_ | **Moonshot, fixed**: factual/math/logic MEDIUM → **CODE (kimi)** — the LocalFirst intel says gemma-31b 404s at grading, so "MEDIUM" was a silent LARGE-escalation still paying the minimax tax; kimi is scored-run-proven and tax-free. Plus: pure-arithmetic prompts answered by a **deterministic in-process solver (0 tokens)**, and truncated answers (finish_reason=length) **escalate instead of being submitted**. Rollback anchor: `94619a7` | | |
+| 15 | `de9bbf4` | **Moonshot, fixed**: factual/math/logic MEDIUM → **CODE (kimi)** (gemma-31b 404s at grading; kimi is scored-run-proven and tax-free) + deterministic arithmetic solver (0 tokens) + truncation escalation | **94.7%** (18/19) | **gate PASSED, 4548 tokens — best on both axes** |
+
+Run 15 lessons (2026-07-10):
+- **−547 tokens at unchanged 18/19.** The moonshot's headroom-selling cuts (factual
+  "under 50 words", sentiment label-only, debug code-only) cost NOTHING measurable —
+  person2's hypothesis holds: the old factual-squeeze failures (73.7% × 2) were
+  casualties of the pre-hardening router era and/or minimax-vs-kimi behavior, not of
+  the length budget itself. The +2 headroom is still unspent.
+- kimi now carries factual/math/logic/debug/codegen; SMALL carries the rest; minimax
+  and gemma-31b are fully out of the hot path.
+- Remaining conventional levers are small (~200–400 total: math/logic answer-only on
+  kimi, factual→SMALL, cap trims). Going meaningfully below ~4,100 requires the
+  local-inference architecture (LocalFirst section above): local tokens count as zero.
+- Leaderboard reference points: rank 1 = 2,664 @ 84.2%; LocalFirst = 3,753 @ 100%;
+  us = 4,548 @ 94.7%.
 
 Run 13 lessons (2026-07-10):
 - **The router fix is validated on the real judge set**: +2–3 tasks over the 15/19 band,
