@@ -68,6 +68,37 @@ Run 13 lessons (2026-07-10):
 - With 18/19 there is finally **+2 tasks of headroom above the gate** — token cuts can
   resume without every experiment being a coin flip.
 
+### Competitor intel: jaeyooniee/track1-hybrid-routing-agent — 100% @ 3,753 tokens (2026-07-10)
+
+Full analysis of the repo that beats us on both axes. Three findings that matter to us:
+
+1. **Local inference counts as ZERO tokens** (it's in the official rules) and they built
+   their whole architecture on it: Ollama + qwen2.5:3b baked into the image (3.6GB),
+   5 of 8 categories answered locally for free, plus a deterministic Python arithmetic
+   evaluator for pure-calculation prompts (0 tokens, no hallucination). Only
+   factual/math/logic and measured-unreliable puzzle patterns hit Fireworks (kimi-first,
+   reasoning off, compact per-category system prompts). Their journey: 68.4% FAIL
+   (local answers silently wrong) → verifiers added → 100% @ 3,753.
+2. **gemma-4-31b-it and -nvfp4 reportedly have NO serverless support** (their code cites
+   multi-participant Discord consensus + the Fireworks dashboard) — they 404 everywhere,
+   likely including the grading env. If true, **our MEDIUM tier never existed**: runs
+   12/13's math/logic→MEDIUM actually 404'd (free) and fell back to LARGE minimax via
+   main.py's blank-answer retry. This cleanly explains run 12 ≈ run 11 anchor (15/19
+   both, since nothing effectively changed) and run 13's tokens ≈ run 9's. Every future
+   tier decision should treat ALLOWED_MODELS' usable set as: minimax-m3, kimi-k2p7-code,
+   gemma-4-26b-a4b-it.
+3. **Zero-token verifiers + pay-for-intelligence-on-failure**: they verify every answer
+   programmatically (hedge phrases, math answer must contain a number, ast.parse for
+   Python, requested-function-name present, buggy code returned unchanged, summary
+   length/bullet counts, degenerate output) and only retry with reasoning ON when
+   verification fails. finish_reason=length is treated as an error, never submitted.
+   They also measured **kimi hides ~60% of completion in reasoning_content** unless
+   reasoning_effort="none" (189→113, 195→117) — our client already sends it (validated).
+
+Notable: their comments credit "the #2 team at 94.7%" — us — for the "Answer: <value>"
+last-line pattern and the reasoning-off-with-retry design they adopted. The competitive
+gap is NOT prompt tuning; it is the local-zero rule plus verification.
+
 Methodology constraint (confirmed 2026-07-10): **failed runs do not show a token count**
 on the results page. A token-cut experiment that drops below the gate returns ZERO
 information — accuracy is noise-ambiguous AND the token saving stays invisible. Every
