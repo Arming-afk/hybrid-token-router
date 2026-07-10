@@ -58,6 +58,30 @@ What this snapshot proves:
   never tested and can be evaluated OFFLINE against tests/eval/{debug,codegen}.json
   before risking a submission.
 
+### In flight (2026-07-11, person2): offline eval tooling for the next two levers
+
+Two runnable-by-anyone scripts are now in `scripts/` so the blocked measurements can
+run on whichever machine first gets the models downloaded (the throttled
+`docker run --cpus=2 -m 4g ... ollama/ollama` setup is in each script's docstring):
+
+- `scripts/eval_local_code.py <model>` — the coder-model question: runs
+  debug/codegen eval items through the PRODUCTION local pipeline
+  (local.generate + local.verify), then **executes the generated code against
+  per-item assertions** — the semantic check whose absence sank run 16. Meant for
+  `qwen2.5-coder:3b` (never tested; the only path below 3k). ≥9/10 PASS per
+  category = worth a scored run; the SEMANTIC_MISS count is the widen/don't-widen
+  signal.
+- `scripts/eval_local_summarization.py` — the −21-anomaly repro: true local latency
+  (timeout raised to 120s) on short eval passages + synthesized long ones vs the
+  15s production cap; the first call also measures the cold-start model load.
+
+Also identified by code reading (no measurement yet): the entrypoint's warmup races
+the agent — local-eligible tasks arriving in the first ~25s can LOCAL_FAIL to paid
+remote while the model is still loading. Candidate fix: gate the first local
+attempts on warmup completion (wait, don't fail open) — cheap, and part of the
+"cold-start fix" in the ceiling estimate above. Status on person2's machine: Ollama
+image download cancelled midway (bandwidth); scripts are ready to fire elsewhere.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:
