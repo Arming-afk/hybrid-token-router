@@ -50,6 +50,11 @@ The harness gives one number per submission — treat each run as one eval data 
 | 11 | `86cf241` (resubmitted) | rollback to cut #3 anchor after cut #4's failure — IDENTICAL code to run 9 | **~78.9%** (15/19) | **identical code lost ~1 judge task vs 84.2%** — accuracy noise is ±1 task and spans the gate |
 | 12 | `3a7f0e7` | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | **~78.9%** (15/19) | gate FAILED — but same roll as the anchor's own re-roll (run 11), so **inconclusive as accuracy evidence** |
 
+Methodology constraint (confirmed 2026-07-10): **failed runs do not show a token count**
+on the results page. A token-cut experiment that drops below the gate returns ZERO
+information — accuracy is noise-ambiguous AND the token saving stays invisible. Every
+future experiment must be designed to pass the gate, or it is a wasted submission.
+
 Run 12 lesson (2026-07-10): 15/19 is exactly what the UNCHANGED anchor rolled in run 11,
 so Phase C move #1 shows no detectable accuracy cost — the score can't distinguish
 "MEDIUM lost a task" from the anchor's own noise. The token saving (predicted −400–600)
