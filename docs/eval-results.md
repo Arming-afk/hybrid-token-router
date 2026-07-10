@@ -91,6 +91,39 @@ attempts on warmup completion (wait, don't fail open) — cheap, and part of the
 "cold-start fix" in the ceiling estimate above. Status on person2's machine: Ollama
 image download cancelled midway (bandwidth); scripts are ready to fire elsewhere.
 
+### Track A measurement (2026-07-11 ~04:20, person3 machine, ollama pinned to 2 cores)
+
+`scripts/eval_local_summarization.py` on native Windows ollama (qwen2.5:3b), all
+ollama processes affinity-pinned to 2 logical cores to mimic the grading box
+(caveat: full RAM — the 4GB cap is NOT reproduced; docker pull of the image kept
+failing on this connection, weights fetched via resumable curl instead):
+
+| item | latency | verdict |
+|---|---|---|
+| short [0] (first call) | **57.0s** | model load under contention — would LOCAL_FAIL at the old 25s cap |
+| short [1] | 3.0s | genuine verifier reject: 12 words vs a 10-word limit (correct escalation) |
+| short [2]–[3] | 3.1s | pass |
+| long 350 / 520 / 870 words | 3.6 / 4.4 / 5.2s | pass — all far inside the 15s cap |
+
+Re-timing item [0] warm: **3.4s** (load_duration 0.6s) — the 57s was pure model
+load, not compute. Conclusions:
+
+1. **The long-passage-timeout hypothesis for the −21 anomaly is DISPROVED** on
+   CPU grounds: 870-word prompt-eval takes ~5s at 2 cores, 3× inside the cap.
+2. **Cold-start is the confirmed real risk**: a first call under load took 57s;
+   the old FIRST_CALL_TIMEOUT=25 loses that race → raised to 60s.
+3. The `_sentence_count` verifier over-counts on abbreviations (U.S., Dr., e.g.,
+   single-letter initials) — confirmed offline, rejects correct one-sentence
+   answers → abbreviation masking added.
+4. Remaining candidate causes for −21, not separable without the real box:
+   verifier rejections in prod (abbrev + genuine word-limit misses), 4GB RAM
+   pressure (untestable natively; SUMMARIZATION_CALL_TIMEOUT=45s added as free
+   insurance), or simply few/short summarization tasks in the judge set.
+
+Rung 3 = these three fixes, LOCAL_CATEGORIES unchanged (sentiment,ner,summarization).
+All fail-open: zero accuracy risk vs run 18's 100%; token saving materializes only
+if prod summarization was bleeding to remote via causes 2–3.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:

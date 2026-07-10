@@ -41,6 +41,15 @@ def test_summarization_respects_stated_limits():
     assert verify(prompt_words, "summarization", "Far too many words in this answer.")[0] is False
 
 
+def test_sentence_count_ignores_abbreviations_and_initials():
+    prompt = "Summarize in one sentence: ..."
+    abbrev = ("The U.S. transit authority, led by Dr. Lee and J. Smith of Acme Inc., "
+              "approved the plan (e.g. new corridors).")
+    assert verify(prompt, "summarization", abbrev)[0] is True
+    two_real = "The plan was approved. Work begins in September."
+    assert verify(prompt, "summarization", two_real)[0] is False
+
+
 def test_code_answers_must_parse_and_contain_requested_function():
     prompt = "Write a Python function called 'reverse_string' that reverses a string."
     good = "```python\ndef reverse_string(s):\n    return s[::-1]\n```"
