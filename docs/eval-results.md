@@ -56,7 +56,24 @@ The harness gives one number per submission — treat each run as one eval data 
 
 | 16 | `e9838d0` | **Local-first architecture**: Ollama + qwen2.5:3b in-image; 5 categories local behind zero-token verifiers; factual/math/logic stay on kimi | **78.9%** (15/19) | gate FAILED — ~2-3 silent local wrong answers slipped past the verifiers |
 | 17 | `263dd54` | Local narrowed to **sentiment,ner** only (the shortest-output, most-verifiable categories); summarization/debug/codegen back to the proven remote path | **89.5%** (17/19) | **gate PASSED, 4,199 tokens — new best token count; new endgame anchor** |
-| 18 | _(queued)_ | Ladder rung 2: local widened to **sentiment,ner,summarization** (its word/sentence-limit verifiers already exist) | | predicted ~3,300 |
+| 18 | `7bb50c4` | Ladder rung 2: local widened to **sentiment,ner,summarization** (its word/sentence-limit verifiers already exist) | **100%** (19/19) | **gate PASSED, 4,178 tokens — best on both axes, first 100%; new endgame anchor** — but only −21 vs run 17: summarization likely fell back to remote (see lessons) |
+
+Run 18 lessons (2026-07-10):
+- **First 100% (19/19), 4,178 tokens — new endgame anchor `7bb50c4`.**
+- **The −21 anomaly**: +summarization was predicted to shed several hundred
+  remote tokens but shed 21. Most plausible cause: long summarization passages
+  make local prompt-eval slow on the 2 vCPU box, blowing the 15s `CALL_TIMEOUT`
+  → `LOCAL_FAIL` → fail-open to remote. Needs a throttled local repro
+  (docker `--cpus=2 -m 4g`, bogus API key, watch LOCAL/LOCAL_FAIL lines)
+  before any code change.
+- **Bisect verdict on run 16**: run 16 (5 cats local) = 15/19; run 18
+  (3 cats local) = 19/19 on the same judge set — the only config delta is
+  debug+codegen local. The ~3-4 lost tasks were code answers that passed
+  ast.parse/fn-name verifiers while being semantically wrong. **Do NOT widen
+  local to debug/codegen** — qwen2.5:3b can't carry them.
+- Token math: model choice barely moves the score (tokens, not dollars) — the
+  only big lever left is making summarization actually answer locally; the
+  conventional remote trims (math/logic answer-only, cap shaves) are ~100-200.
 
 Run 17 lessons (2026-07-10):
 - **sentiment+ner local is safe**: 17/19 @ 4,199, −349 tokens vs run 15. The −1
