@@ -1,4 +1,4 @@
-"""Local inference sidecar (Ollama + qwen2.5:3b) and its zero-token answer verifiers.
+"""Local inference sidecar (Ollama + qwen2.5-coder:3b) and its zero-token answer verifiers.
 
 Contest rule: "Local models and tokens used locally count as zero for the final
 score." Every task in LOCAL_CATEGORIES is attempted here first; a verified local
@@ -25,7 +25,11 @@ import urllib.error
 import urllib.request
 
 BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5:3b")
+# qwen2.5-coder:3b replaced the plain sibling after offline evals (2026-07-11):
+# debug 10/10 and codegen 9/10 semantically correct (run 16's killers), at parity
+# with qwen2.5:3b on sentiment/ner/summarization. One model only — 4GB RAM cannot
+# hold two 3B models, and a swap costs 10-20s per switch on the grading box.
+MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5-coder:3b")
 # First call pays the model load from disk (~2GB into RAM); later calls don't.
 # Measured 2026-07-11 (2-core pin): a loaded-under-contention first call took 57s
 # while the same prompt warm took 3.4s — 25s loses the race against the
@@ -40,14 +44,14 @@ CALL_TIMEOUT = 15.0
 SUMMARIZATION_CALL_TIMEOUT = 45.0
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
 
-# Categories allowed to try local-first. Run 16 (all five local-eligible
-# categories) scored 15/19: verifiers catch format/syntax, not semantics, and
-# ~2-3 confidently-wrong local answers slipped through. Recovery follows the
-# LocalFirst playbook — bisect through the re-scoring loop. Run 17
-# (sentiment,ner) passed 17/19 @ 4,199; this rung adds summarization, whose
-# word/sentence-limit verifiers already exist. Widen one category per passing run.
-# factual/math/logic stay remote (kimi) — proven 18/19. Empty env disables local.
-_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization")
+# Categories allowed to try local-first. Run 16 (all five local on PLAIN
+# qwen2.5:3b) scored 15/19 — code categories were the poison. Run 17
+# (sentiment,ner) and run 18 (+summarization, 19/19) rebuilt trust one rung at
+# a time. This rung re-adds debug+codegen on the CODER model, which passed the
+# offline semantic eval (generated code executed against assertions) that the
+# plain model failed. factual/math/logic stay remote (kimi) — proven 18/19.
+# Empty env disables local entirely.
+_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization,debug,codegen")
 LOCAL_CATEGORIES = {c.strip() for c in _raw.split(",") if c.strip()}
 
 _BASE_INSTRUCTION = (

@@ -124,6 +124,32 @@ Rung 3 = these three fixes, LOCAL_CATEGORIES unchanged (sentiment,ner,summarizat
 All fail-open: zero accuracy risk vs run 18's 100%; token saving materializes only
 if prod summarization was bleeding to remote via causes 2–3.
 
+### Track B measurement (2026-07-11 ~06:30): qwen2.5-coder:3b carries the code categories
+
+`scripts/eval_local_code.py qwen2.5-coder:3b` (native ollama pinned to 2 cores,
+generated code EXECUTED against per-item assertions):
+
+- **debug: 10/10 PASS**, 0 semantic misses, latency avg 4.1s / max 8.1s
+- **codegen: 9/10 PASS**, 1 semantic miss (average-ignoring-None item: generated
+  code divides by zero on an empty list), latency avg 4.3s
+- 19/20 total ≥ the 14/15 gate → run 16's "code categories are poison" verdict is
+  confirmed to be a PLAIN-qwen2.5:3b property, not a 3B-local property.
+
+Single-model comparison on the easy categories (both models, same eval sets,
+manual re-judge of scorer artifacts): sentiment base 9/10 vs coder 8/10 (the one
+extra flub is a contradictory label+justification); ner ≈7/10 BOTH (different
+miss profiles; the automated scorer's comma-split values understated both);
+summarization equal by eyeball. **Verdict: swap to the coder model outright** —
+4GB RAM cannot hold two 3B models and a swap costs 10-20s serialized.
+
+**Rung 4** (this commit): LOCAL_MODEL=qwen2.5-coder:3b, LOCAL_CATEGORIES=
+sentiment,ner,summarization,debug,codegen. factual/math/logic stay on kimi.
+Validated end-to-end against the real local sidecar with remote stubbed dead:
+all five categories answered locally through the production pipeline (the
+summarization answer contained "U.S." and passed the one-sentence verifier —
+the rung-3 abbrev fix live). Expected landing ~3.0–3.5k if the code categories
+hold on the judge set; risk budget is run 18's +3-task headroom above the gate.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:

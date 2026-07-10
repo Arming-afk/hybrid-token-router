@@ -8,8 +8,8 @@ from src.local import LOCAL_CATEGORIES, verify  # noqa: E402
 
 
 def test_default_local_categories_are_the_current_bisect_rung():
-    assert LOCAL_CATEGORIES == {"sentiment", "ner", "summarization"}
-    for kept_remote in ("factual", "math", "logic", "debug", "codegen"):
+    assert LOCAL_CATEGORIES == {"sentiment", "ner", "summarization", "debug", "codegen"}
+    for kept_remote in ("factual", "math", "logic"):
         assert kept_remote not in LOCAL_CATEGORIES
 
 
