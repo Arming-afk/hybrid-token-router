@@ -34,10 +34,11 @@ NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate inste
 # Categories allowed to try local-first. Run 16 (all five local-eligible
 # categories) scored 15/19: verifiers catch format/syntax, not semantics, and
 # ~2-3 confidently-wrong local answers slipped through. Recovery follows the
-# LocalFirst playbook — bisect through the re-scoring loop. Current set: the
-# shortest-output, most-verifiable pair; widen one category per passing run.
+# LocalFirst playbook — bisect through the re-scoring loop. Run 17
+# (sentiment,ner) passed 17/19 @ 4,199; this rung adds summarization, whose
+# word/sentence-limit verifiers already exist. Widen one category per passing run.
 # factual/math/logic stay remote (kimi) — proven 18/19. Empty env disables local.
-_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner")
+_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization")
 LOCAL_CATEGORIES = {c.strip() for c in _raw.split(",") if c.strip()}
 
 _BASE_INSTRUCTION = (

@@ -55,7 +55,19 @@ The harness gives one number per submission — treat each run as one eval data 
 | 15 | `de9bbf4` | **Moonshot, fixed**: factual/math/logic MEDIUM → **CODE (kimi)** (gemma-31b 404s at grading; kimi is scored-run-proven and tax-free) + deterministic arithmetic solver (0 tokens) + truncation escalation | **94.7%** (18/19) | **gate PASSED, 4548 tokens — best on both axes** |
 
 | 16 | `e9838d0` | **Local-first architecture**: Ollama + qwen2.5:3b in-image; 5 categories local behind zero-token verifiers; factual/math/logic stay on kimi | **78.9%** (15/19) | gate FAILED — ~2-3 silent local wrong answers slipped past the verifiers |
-| 17 | _(queued)_ | Local narrowed to **sentiment,ner** only (the shortest-output, most-verifiable categories); summarization/debug/codegen back to the proven remote path | | predicted ~4,000 at run-15 accuracy |
+| 17 | `263dd54` | Local narrowed to **sentiment,ner** only (the shortest-output, most-verifiable categories); summarization/debug/codegen back to the proven remote path | **89.5%** (17/19) | **gate PASSED, 4,199 tokens — new best token count; new endgame anchor** |
+| 18 | _(queued)_ | Ladder rung 2: local widened to **sentiment,ner,summarization** (its word/sentence-limit verifiers already exist) | | predicted ~3,300 |
+
+Run 17 lessons (2026-07-10):
+- **sentiment+ner local is safe**: 17/19 @ 4,199, −349 tokens vs run 15. The −1
+  task vs run 15's 18/19 is inside the proven ±1 noise band, and from 17/19 even
+  a −1 re-roll (16/19 = 84.2%) still clears the gate.
+- **New endgame anchor: `263dd54`** — beats `de9bbf4` on tokens (the ranking
+  axis) while passing; supersedes run 16's "re-save `de9bbf4`" standing recovery.
+- Submission mechanics: the portal would NOT accept re-saving `de9bbf4` while
+  `263dd54` was pending — a "best" entry cannot be parked. Whatever is submitted
+  LAST before close (2026-07-11 23:00) is what counts, so the final submission
+  must itself be a proven-passing image; never let an experiment be the closer.
 
 Run 16 lesson (2026-07-10): verifiers catch format and syntax, not semantics — a
 confidently wrong local label/summary/algorithm passes every programmatic check. With

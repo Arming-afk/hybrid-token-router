@@ -7,9 +7,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.local import LOCAL_CATEGORIES, verify  # noqa: E402
 
 
-def test_default_local_categories_are_the_bisected_safe_pair():
-    assert LOCAL_CATEGORIES == {"sentiment", "ner"}
-    for kept_remote in ("factual", "math", "logic", "summarization", "debug", "codegen"):
+def test_default_local_categories_are_the_current_bisect_rung():
+    assert LOCAL_CATEGORIES == {"sentiment", "ner", "summarization"}
+    for kept_remote in ("factual", "math", "logic", "debug", "codegen"):
         assert kept_remote not in LOCAL_CATEGORIES
 
 
