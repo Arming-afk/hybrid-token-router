@@ -29,10 +29,12 @@ submission so each result cleanly measures one variable:
   step-by-step output was pure token cost; codegen additionally forbids comments.
   Debug is deliberately untouched: the judge's category description is "identifying
   bugs AND providing corrected implementations", so the bug sentence stays.
-- Cut #4: factual "under 120 words" -> "under 60 words" — the untested middle
-  between the proven 120 (84.2%) and the failed "1-2 sentences" (73.7%). Rides its
-  own submission AFTER cut #3's result, because factual is the one category with a
-  demonstrated accuracy cliff nearby.
+  Gate held at 5085 tokens (−175).
+- Cut #4 tried factual "under 60 words" and scored **73.7% — the same 14/19 as the
+  "1-2 sentences" failure** — reverted. Factual's accuracy cliff sits between 60 and
+  120 words; "under 120 words" is the proven floor. Do NOT squeeze factual's output
+  again; the remaining token fat is structural (the minimax prompt tax — a Phase C
+  tier move), not instructional.
 """
 
 _BASE = "English. Terse; no preamble."
@@ -40,12 +42,8 @@ _BASE = "English. Terse; no preamble."
 SPEC = {
     "factual": {
         "tier": "LARGE",
-        # Cap stays 300: a disobedient long answer is billed, not truncated.
         "max_tokens": 300,
-        # "under 60 words" is the untested middle between the proven "under 120
-        # words" (84.2% pass) and the failed "1-2 sentences" (73.7%): four times
-        # the budget of the failed cut, half the proven one.
-        "instruction": f"{_BASE} Answer clearly in under 60 words.",
+        "instruction": f"{_BASE} Answer clearly in under 120 words.",
     },
     "math": {
         "tier": "LARGE",

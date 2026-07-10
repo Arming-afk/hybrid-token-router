@@ -46,7 +46,15 @@ The harness gives one number per submission — treat each run as one eval data 
 | 7 | `2518cf4` | Stage 2 cut #2: factual → "1-2 sentences" | **73.7%** | gate FAILED, regression from run 5 |
 | 8 | `c7120f0` | cut #2 reverted (factual back to "under 120 words"), cut #1 kept | | |
 | 9 | `86cf241` | cut #3: math/logic → "at most 2 short steps" + codegen "No comments." | (pass; % not recorded) | tokens **5085** (−175 vs 5260; predicted −300–550) |
-| 10 | `f4c9742` | cut #4: factual → "under 60 words" (untested middle between proven-120 and failed-1-2-sentences; predicted −100–200) | | |
+| 10 | `f4c9742` | cut #4: factual → "under 60 words" (middle between proven-120 and failed-1-2-sentences) | **73.7%** | gate FAILED — reverted |
+
+Cut #4 lesson: 73.7% is the exact same 14/19 as the "1-2 sentences" failure — most
+likely the same ~2 factual tasks fail whenever factual's output budget drops below its
+cliff, which now sits somewhere in (60, 120] words. "Under 120 words" is the proven
+floor; factual's output is load-bearing for the judge (explanatory completeness, not
+just the fact). **Phase B is closed**: best state is cut #3 (`86cf241`-equivalent,
+5085 tokens, gate held). The path to <4000 now runs exclusively through Phase C
+(shedding the ~100/call minimax prompt tax by moving categories off LARGE).
 
 Cut #3 lesson: the actual saving (−175) undershot the probe-based prediction — real
 math/logic answers under the old "brief steps" wording were already shorter than the
