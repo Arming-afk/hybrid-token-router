@@ -47,6 +47,8 @@ The harness gives one number per submission — treat each run as one eval data 
 | 8 | `c7120f0` | cut #2 reverted (factual back to "under 120 words"), cut #1 kept | | |
 | 9 | `86cf241` | cut #3: math/logic → "at most 2 short steps" + codegen "No comments." | (pass; % not recorded) | tokens **5085** (−175 vs 5260; predicted −300–550) |
 | 10 | `f4c9742` | cut #4: factual → "under 60 words" (middle between proven-120 and failed-1-2-sentences) | **73.7%** | gate FAILED — reverted |
+| 11 | `86cf241` (resubmitted) | rollback to cut #3 anchor after cut #4's failure | (expect 84.2%) | re-banks 5085 as the latest run |
+| 12 | _(queued)_ | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | | |
 
 Cut #4 lesson: 73.7% is the exact same 14/19 as the "1-2 sentences" failure — most
 likely the same ~2 factual tasks fail whenever factual's output budget drops below its

@@ -3,10 +3,11 @@
 This is the main tuning surface: every token in an instruction must earn its place,
 and every tier bump must be justified by a failed eval at the cheaper tier.
 
-Current values mirror the gate-PASSING config of the 2nd-place Track 1 entry
+Current values start from the gate-PASSING config of the 2nd-place Track 1 entry
 (KaananeTaha/AMD-AI-Hackathon, analyzed 2026-07-09; full rationale in
-docs/eval-results.md): factual/math/logic on LARGE (minimax-m3, made safe by
-client.py's reasoning_effort="none"), debug/codegen on the CODE tier
+docs/eval-results.md) — factual/math/logic on LARGE (minimax-m3, made safe by
+client.py's reasoning_effort="none") — except math/logic, moved to MEDIUM by
+Phase C move #1 below. debug/codegen sit on the CODE tier
 (kimi-k2p7-code), sentiment/summarization/ner on SMALL. factual doubles as the
 router's misroute default, so it deliberately sits on the strongest tier — any
 false positive lands on the most capable model instead of failing the gate.
@@ -35,6 +36,14 @@ submission so each result cleanly measures one variable:
   120 words; "under 120 words" is the proven floor. Do NOT squeeze factual's output
   again; the remaining token fat is structural (the minimax prompt tax — a Phase C
   tier move), not instructional.
+- Phase C move #1: math+logic LARGE -> MEDIUM, instructions and caps unchanged (the
+  tier is the single variable). Sheds the ~100/call minimax prompt tax on those
+  tasks (see the token-cost probe); predicted −400–600 from 5085. Chosen over
+  factual->MEDIUM because factual has failed the gate twice on completeness and is
+  the router's misroute default, while math/logic are judged on a verifiable
+  'Answer: <value>' line. MEDIUM (gemma-4-31b-it) is unreachable with the public
+  key (404, re-probed 2026-07-10), so this is a blind experiment: if the gate
+  falls, revert and re-submit the cut #3 anchor image (86cf241) immediately.
 """
 
 _BASE = "English. Terse; no preamble."
@@ -46,10 +55,10 @@ SPEC = {
         "instruction": f"{_BASE} Answer clearly in under 120 words.",
     },
     "math": {
-        "tier": "LARGE",
-        # Cap unchanged on purpose: it only bounds a disobedient long answer (billed,
-        # not truncated); the token cut comes from the instruction, the single
-        # variable this submission measures.
+        # MEDIUM = gemma-4-31b-it: dodges minimax's ~100/call prompt tax. Instruction
+        # and cap unchanged on purpose — the tier is the single variable this
+        # submission measures.
+        "tier": "MEDIUM",
         "max_tokens": 400,
         "instruction": f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line.",
     },
@@ -84,7 +93,8 @@ SPEC = {
         ),
     },
     "logic": {
-        "tier": "LARGE",
+        # Moves with math (same Phase C experiment); see the note on math's tier.
+        "tier": "MEDIUM",
         "max_tokens": 420,
         "instruction": (
             f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line."
