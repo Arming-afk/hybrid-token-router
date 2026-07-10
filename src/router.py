@@ -16,7 +16,10 @@ import re
 # --- explicitly-named operations, checked in this order -----------------------
 R = {
     "sentiment": re.compile(
-        r"\bsentiment\b"
+        # Bare "sentiment" is decisive except in "sentiment analysis" as an NLP term
+        # ("What is sentiment analysis?" is factual); "sentiment analysis on/of <text>"
+        # is still a labeling task.
+        r"\bsentiment\b(?!\s+analysis\b(?!\s+(on|of)\b))"
         r"|\b(classify|label|categori[sz]e|determine|identify|rate|analy[sz]e)\b"
         r".{0,40}\b(positive|negative|neutral)\b"
         r"|\bpositive[,/ ]+negative[,/ ]+(or +)?neutral\b"
@@ -26,10 +29,14 @@ R = {
         r"|\bwhat do people think\b"
         r"|\bsatisfied or dissatisfied\b"
         r"|\bhappy or unhappy\b"
-        # "tone/mood/emotion" of a text is a sentiment task, but only when paired with a
-        # classification verb — bare "tone of <literary work>" is a factual question.
+        # "tone/mood/emotion" of a text is a sentiment task only when paired with a
+        # classification verb AND aimed at a given text (deixis like "of this comment"
+        # or a quoted/colon-introduced passage). "What is the mood of a minor key" and
+        # "analyze the mood of the Romantic period" are factual questions.
         r"|\b(classify|determine|identify|what is|what'?s|analy[sz]e|judge|assess)"
-        r".{0,25}\b(tone|mood|emotion|sentiment)\b"
+        r"(?=.{0,25}\b(tone|mood|emotion|sentiment)\b)"
+        r"(?=.{0,90}(?:\bof (?:this|these|the following|the (?:text|message|review"
+        r"|comment|tweet|feedback|post|email|statement|passage|paragraph))\b|[:\"']))"
         # emotion-word either/or pairs beyond the fixed positive/negative wording
         r"|\b(happy|glad|angry|sad|upset|excited|frustrated|pleased|annoyed)\s+or\s+"
         r"(happy|glad|angry|sad|upset|excited|frustrated|pleased|annoyed|disappointed)\b",
@@ -71,7 +78,12 @@ WEAK_CODE = re.compile(
 )
 WRITE = re.compile(
     r"\b(write|implement|create|build|generate|develop|complete)\b"
-    r"|\bgive me\b|\bprovide\b|\bshow me\b",
+    # Soft request verbs count as write-intent only when their object is a code
+    # artifact: "give me a function" is codegen, but "provide an overview of the
+    # quicksort algorithm" is a factual question.
+    r"|\b(give me|provide|show me)\s+(?:(?:a|an|the|some)\s+)?(?:[\w-]+\s+){0,2}?"
+    r"(?:function|method|script|program|class|snippet|implementation|regex|query"
+    r"|decorator|endpoint|parser|code)\b",
     re.I,
 )
 # STRONG_FIX names existing broken code and beats a co-occurring WRITE verb.
@@ -80,7 +92,13 @@ STRONG_FIX = re.compile(
     r"|doesn'?t work|not working|never (terminates|returns|works|ends|stops)"
     r"|should\b.{0,50}\bbut\b"
     r"|\bspot the (problem|bug|error|issue)\b|\bwhat'?s? (is )?wrong\b|\bwhat is wrong\b"
-    r"|\bthrows? (an?|the)?\s*\w*(error|exception)\b|\braises? (an?|the)?\s*\w*(error|exception)\b"
+    # throws/raises marks a bug report only when a SPECIFIC artifact does the throwing
+    # ("this code throws...", "my script raises..."). "a program throws an exception"
+    # is conceptual (factual), and "write a function that raises ValueError" is a spec.
+    r"|\b(?:this|my|it|below|following|the (?:code|function|script|program|snippet|loop"
+    r"|method|query))\b.{0,60}\b(?:throws?|raises?|throwing|raising)\b"
+    r".{0,30}\b\w*(?:error|exception)s?\b"
+    r"|\bcorrected (version|implementation|code)\b"
     # "why does/do/is/are" alone is an ordinary explanatory question ("why do we use
     # X?"); only treat it as a bug report when it's paired with a failure/behavior word.
     r"|why (does|do|is|are|doesn'?t)\b.{0,40}\b(work|returns?|crash(es)?|fails?|raise"
@@ -96,7 +114,7 @@ FIX = re.compile(
 # --- math ---------------------------------------------------------------------
 DIGIT = re.compile(r"\d")
 MATH_SIGNAL = re.compile(
-    r"\bcalculate\b|\bcompute\b|\bconvert\b|\bhow (many|much|old|far|fast|long)\b"
+    r"\bcalculate\b|\bcompute\b|\bconvert\b|\bhow (many|much|far|fast|long)\b"
     r"|\bpercent(age)?\b|%|\baverage of\b|\bsum of\b|\btotal\b|\bcompound\b|\binterest\b"
     r"|\bdiscount|\bprofit\b|\bsales tax\b|\bper (hour|day|week|month|year|item|unit|person)\b"
     r"|\bspeed\b|\bratio\b|\bproportion\b|\btimes\b|\bdivided?\b|\bmultipl|\bplus\b|\bminus\b"
@@ -104,9 +122,13 @@ MATH_SIGNAL = re.compile(
     r"|\bhalf of\b|\bquarter of\b|\bdozen\b|\bdouble[sd]?\b|\btriple[sd]?\b|\btwice\b"
     r"|\bsquare root\b|\bsquared\b|\bcubed\b|\bremainder\b|\bquotient\b|\bproduct of\b"
     r"|\bround(ed)?\b.{0,20}\bdecimal"
-    # word-problem phrasings that describe an arithmetic relation between numbers
+    # word-problem phrasings that describe an arithmetic relation between numbers.
+    # Age problems key off the RELATION ("years older", "as old as", "in 5 years"),
+    # not "how old" itself — "How old is the US Constitution, signed in 1787?" is
+    # factual trivia despite containing a digit.
     r"|\badds? (up )?to\b|\bdiffer by\b|\bincreases? by\b"
-    r"|\bdecreases? by\b|\bgrows? by\b|\bhow old\b",
+    r"|\bdecreases? by\b|\bgrows? by\b"
+    r"|\byears? (older|younger)\b|\bas old as\b|\bin \d+ years?\b",
     re.I,
 )
 
@@ -125,7 +147,17 @@ NOT_TRIVIA_SUBJECT = (
     r"|structure|lake|desert|bird|fish|tree|species|continent|state|volcano|waterfall)\b)"
 )
 WEAK_LOGIC = re.compile(
-    r"\brow of\b|\bin a row\b|\bsits? in\b|\bstand(s|ing)? in\b|\badjacent\b"
+    # "in a row" is a seating/lineup signal only with an arrangement verb — "won the
+    # most championships in a row" is factual trivia. Same for "sits/stands in":
+    # require a positional object ("sits in the middle"), so "the organ sits in the
+    # chest cavity" stays factual.
+    r"\brow of\b"
+    r"|\b(?:sit|sits|sitting|stand|stands|standing|seated|are|is|placed|arranged"
+    r"|lined? up)\s+in a row\b"
+    r"|\bsits? in\b(?=\s+(?:the\s+)?(?:middle|front|back|center|centre|row|seat"
+    r"|position|chair|first|second|third|last))"
+    r"|\bstands? in\b(?=\s+(?:the\s+)?(?:middle|front|back|line|queue|row|position))"
+    r"|\badjacent\b"
     r"|\b(directly |immediately )?(left|right) of\b"
     r"|\bfinish(es|ed)?\b.{0,20}\b(before|after|first|last)\b"
     r"|\bwho (finished|came|won|wins|placed|ranked|owns|is next)\b(?!\s+to\b)"
