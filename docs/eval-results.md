@@ -35,6 +35,28 @@ via OpenRouter — see `.env.eval`).
 - **LARGE `minimax-m3`** — unknown size; reasoning status UNVERIFIED (see follow-ups).
 - **`kimi-k2p7-code`** — code-specialized, unused by the 3-tier scheme.
 
+## Organizer clarification (2026-07-10) — read before choosing the final submission
+
+Announced on the contest channel:
+
+1. **Local-only / zero-API-call strategies are explicitly legitimate.** Our
+   in-image Ollama path breaks no rules.
+2. **Final rankings re-score submissions on NEW randomized prompts after the
+   close.** Every accuracy number in the table below measures fit to the
+   CURRENT 19-task set only. Prompt-specific margins (razor-thin caps, wording
+   tuned to observed tasks) may not carry; category-level and architectural
+   properties (router regexes, deterministic solver, verifiers + fail-open
+   local) do carry. Task COUNT may also change — the serialized local path and
+   the 150s local-budget guard matter if the final set is bigger.
+3. **No network isolation, but manual audits: routing inference outside
+   Fireworks = disqualification.** Localhost Ollama is fine under point 1;
+   runtime must make no outbound calls except `FIREWORKS_BASE_URL`
+   (verifiable with `docker run --network=none`).
+4. **Tie-breaker for equal tokens/accuracy: TBD by organizers.**
+
+Consequence for the endgame: pick the final image for **robustness on unseen
+prompts**, not for its score on the current set.
+
 ## Scored submission history (the only real accuracy numbers we have)
 
 The harness gives one number per submission — treat each run as one eval data point.
@@ -46,21 +68,208 @@ The harness gives one number per submission — treat each run as one eval data 
 | 3 | `4d5e32b` | PR #9 router widening + math/logic → LARGE (minimax-m3, 2000-tok cap) | **57.9%** | gate FAILED, regression |
 | 4 | `215e22a` | PR #9 router widening (kept) + math/logic reverted to MEDIUM | **63.2%** | gate FAILED, partial recovery |
 | 5 | `6f01e64` | 2nd-place proven config: LARGE+`reasoning_effort=none` for factual/math/logic, CODE tier for debug/codegen, SMALL for the rest, 25s timeout, no stripping | **84.2%** | **gate PASSED** (5273 tokens) |
-| 6 | `2518cf4` | Stage 2 cut #1 (input filler trim) + cut #2 (factual → "1-2 sentences") | **73.7%** | gate FAILED, regression from run 5 |
+| 6 | `6b9aefa` | Stage 2 cut #1: instruction filler trim only | (accuracy not recorded) | tokens **5260** (−13 vs predicted ~140) |
+| 7 | `2518cf4` | Stage 2 cut #2: factual → "1-2 sentences" | **73.7%** | gate FAILED, regression from run 5 |
+| 8 | `c7120f0` | cut #2 reverted (factual back to "under 120 words"), cut #1 kept | | |
+| 9 | `86cf241` | cut #3: math/logic → "at most 2 short steps" + codegen "No comments." | (pass; % not recorded) | tokens **5085** (−175 vs 5260; predicted −300–550) |
+| 10 | `f4c9742` | cut #4: factual → "under 60 words" (middle between proven-120 and failed-1-2-sentences) | **73.7%** | gate FAILED — reverted |
+| 11 | `86cf241` (resubmitted) | rollback to cut #3 anchor after cut #4's failure — IDENTICAL code to run 9 | **~78.9%** (15/19) | **identical code lost ~1 judge task vs 84.2%** — accuracy noise is ±1 task and spans the gate |
+| 12 | `3a7f0e7` | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | **~78.9%** (15/19) | gate FAILED — but same roll as the anchor's own re-roll (run 11), so **inconclusive as accuracy evidence** |
+
+| 13 | `94619a7` | router hardening (5 false-positive classes fixed, dev 187/187) + Phase C move #1 + cut #3 — submitted as "latest tag at submit time", not the intended `3a7f0e7` re-roll | **94.7%** (18/19) | **gate PASSED, 5095 tokens — best accuracy ever** |
+| 14 | `1a4947a` | **Moonshot bundle** (rank 1 posted 2600/84% — accuracy above the gate is wasted spend, so run 13's +2 headroom is converted to cuts): factual → MEDIUM + "under 50 words" (cap 120); sentiment → label only (cap 30); debug → corrected code only, no comments (cap 450); summarization → ≤3-sentence default; math/logic caps → 150 (2 steps kept as CoT); nothing on LARGE | **INFRA_ERROR** | not scored — image verified pullable (200) and CI green, so most likely a premature submit inside the ~30s build window or a transient harness failure |
+| 15 | `de9bbf4` | **Moonshot, fixed**: factual/math/logic MEDIUM → **CODE (kimi)** (gemma-31b 404s at grading; kimi is scored-run-proven and tax-free) + deterministic arithmetic solver (0 tokens) + truncation escalation | **94.7%** (18/19) | **gate PASSED, 4548 tokens — best on both axes** |
+
+| 16 | `e9838d0` | **Local-first architecture**: Ollama + qwen2.5:3b in-image; 5 categories local behind zero-token verifiers; factual/math/logic stay on kimi | **78.9%** (15/19) | gate FAILED — ~2-3 silent local wrong answers slipped past the verifiers |
+| 17 | `263dd54` | Local narrowed to **sentiment,ner** only (the shortest-output, most-verifiable categories); summarization/debug/codegen back to the proven remote path | **89.5%** (17/19) | **gate PASSED, 4,199 tokens — new best token count; new endgame anchor** |
+| 18 | `7bb50c4` | Ladder rung 2: local widened to **sentiment,ner,summarization** (its word/sentence-limit verifiers already exist) | **100%** (19/19) | **gate PASSED, 4,178 tokens — best on both axes, first 100%; new endgame anchor** — but only −21 vs run 17: summarization likely fell back to remote (see lessons) |
+
+Run 18 lessons (2026-07-10):
+- **First 100% (19/19), 4,178 tokens — new endgame anchor `7bb50c4`.**
+- **The −21 anomaly**: +summarization was predicted to shed several hundred
+  remote tokens but shed 21. Most plausible cause: long summarization passages
+  make local prompt-eval slow on the 2 vCPU box, blowing the 15s `CALL_TIMEOUT`
+  → `LOCAL_FAIL` → fail-open to remote. Needs a throttled local repro
+  (docker `--cpus=2 -m 4g`, bogus API key, watch LOCAL/LOCAL_FAIL lines)
+  before any code change.
+- **Bisect verdict on run 16**: run 16 (5 cats local) = 15/19; run 18
+  (3 cats local) = 19/19 on the same judge set — the only config delta is
+  debug+codegen local. The ~3-4 lost tasks were code answers that passed
+  ast.parse/fn-name verifiers while being semantically wrong. **Do NOT widen
+  local to debug/codegen** — qwen2.5:3b can't carry them.
+- Token math: model choice barely moves the score (tokens, not dollars) — the
+  only big lever left is making summarization actually answer locally; the
+  conventional remote trims (math/logic answer-only, cap shaves) are ~100-200.
+
+Run 17 lessons (2026-07-10):
+- **sentiment+ner local is safe**: 17/19 @ 4,199, −349 tokens vs run 15. The −1
+  task vs run 15's 18/19 is inside the proven ±1 noise band, and from 17/19 even
+  a −1 re-roll (16/19 = 84.2%) still clears the gate.
+- **New endgame anchor: `263dd54`** — beats `de9bbf4` on tokens (the ranking
+  axis) while passing; supersedes run 16's "re-save `de9bbf4`" standing recovery.
+- Submission mechanics: the portal would NOT accept re-saving `de9bbf4` while
+  `263dd54` was pending — a "best" entry cannot be parked. Whatever is submitted
+  LAST before close (2026-07-11 23:00) is what counts, so the final submission
+  must itself be a proven-passing image; never let an experiment be the closer.
+
+Run 16 lesson (2026-07-10): verifiers catch format and syntax, not semantics — a
+confidently wrong local label/summary/algorithm passes every programmatic check. With
+~12 of 19 tasks answered locally, 2-3 semantic misses ≈ the observed 15/19. This is
+exactly the LocalFirst 68.4% experience; their recovery (and now ours) is category
+bisection through the re-scoring loop: shrink LOCAL_CATEGORIES to the safest set,
+re-measure, widen one category at a time. Standing recovery: re-save `de9bbf4`
+(4,548 @ 94.7%) whenever a passing entry needs to be on the board.
+
+Run 15 lessons (2026-07-10):
+- **−547 tokens at unchanged 18/19.** The moonshot's headroom-selling cuts (factual
+  "under 50 words", sentiment label-only, debug code-only) cost NOTHING measurable —
+  person2's hypothesis holds: the old factual-squeeze failures (73.7% × 2) were
+  casualties of the pre-hardening router era and/or minimax-vs-kimi behavior, not of
+  the length budget itself. The +2 headroom is still unspent.
+- kimi now carries factual/math/logic/debug/codegen; SMALL carries the rest; minimax
+  and gemma-31b are fully out of the hot path.
+- Remaining conventional levers are small (~200–400 total: math/logic answer-only on
+  kimi, factual→SMALL, cap trims). Going meaningfully below ~4,100 requires the
+  local-inference architecture (LocalFirst section above): local tokens count as zero.
+- Leaderboard reference points: rank 1 = 2,664 @ 84.2%; LocalFirst = 3,753 @ 100%;
+  us = 4,548 @ 94.7%.
+
+Run 13 lessons (2026-07-10):
+- **The router fix is validated on the real judge set**: +2–3 tasks over the 15/19 band,
+  far outside ±1 noise. Factual misroutes were real and expensive, exactly as the hunt
+  predicted.
+- **Phase C's token saving is real but masked**: repaired misroutes now route INTO
+  factual on LARGE (minimax tax + full 120-word answers), adding back roughly what
+  math/logic→MEDIUM saved. Net 5095 ≈ run 9's 5085, at +2 tasks more accuracy.
+- **Operational**: no `latest` tag exists on GHCR (release.yml pushes SHA tags only,
+  digests immutable — verified). What ran was determined by the tag typed into the form:
+  the newest SHA at submit time, not the older tag assumed in the plan. ALWAYS pin and
+  double-check the exact SHA in the form before saving; record the submitted tag with
+  the result.
+- With 18/19 there is finally **+2 tasks of headroom above the gate** — token cuts can
+  resume without every experiment being a coin flip.
+
+### Competitor intel: jaeyooniee/track1-hybrid-routing-agent — 100% @ 3,753 tokens (2026-07-10)
+
+Full analysis of the repo that beats us on both axes. Three findings that matter to us:
+
+1. **Local inference counts as ZERO tokens** (it's in the official rules) and they built
+   their whole architecture on it: Ollama + qwen2.5:3b baked into the image (3.6GB),
+   5 of 8 categories answered locally for free, plus a deterministic Python arithmetic
+   evaluator for pure-calculation prompts (0 tokens, no hallucination). Only
+   factual/math/logic and measured-unreliable puzzle patterns hit Fireworks (kimi-first,
+   reasoning off, compact per-category system prompts). Their journey: 68.4% FAIL
+   (local answers silently wrong) → verifiers added → 100% @ 3,753.
+2. **gemma-4-31b-it and -nvfp4 reportedly have NO serverless support** (their code cites
+   multi-participant Discord consensus + the Fireworks dashboard) — they 404 everywhere,
+   likely including the grading env. If true, **our MEDIUM tier never existed**: runs
+   12/13's math/logic→MEDIUM actually 404'd (free) and fell back to LARGE minimax via
+   main.py's blank-answer retry. This cleanly explains run 12 ≈ run 11 anchor (15/19
+   both, since nothing effectively changed) and run 13's tokens ≈ run 9's. Every future
+   tier decision should treat ALLOWED_MODELS' usable set as: minimax-m3, kimi-k2p7-code,
+   gemma-4-26b-a4b-it.
+3. **Zero-token verifiers + pay-for-intelligence-on-failure**: they verify every answer
+   programmatically (hedge phrases, math answer must contain a number, ast.parse for
+   Python, requested-function-name present, buggy code returned unchanged, summary
+   length/bullet counts, degenerate output) and only retry with reasoning ON when
+   verification fails. finish_reason=length is treated as an error, never submitted.
+   They also measured **kimi hides ~60% of completion in reasoning_content** unless
+   reasoning_effort="none" (189→113, 195→117) — our client already sends it (validated).
+
+Notable: their comments credit "the #2 team at 94.7%" — us — for the "Answer: <value>"
+last-line pattern and the reasoning-off-with-retry design they adopted. The competitive
+gap is NOT prompt tuning; it is the local-zero rule plus verification.
+
+Methodology constraint (confirmed 2026-07-10): **failed runs do not show a token count**
+on the results page. A token-cut experiment that drops below the gate returns ZERO
+information — accuracy is noise-ambiguous AND the token saving stays invisible. Every
+future experiment must be designed to pass the gate, or it is a wasted submission.
+
+Run 12 lesson (2026-07-10): 15/19 is exactly what the UNCHANGED anchor rolled in run 11,
+so Phase C move #1 shows no detectable accuracy cost — the score can't distinguish
+"MEDIUM lost a task" from the anchor's own noise. The token saving (predicted −400–600)
+is the real payoff and stays unverified until a passing roll banks it (failed runs
+don't rank). Threshold evidence tightens: 78.9% fails ⇒ bracket **(78.9%, 84.2%]**,
+consistent with exactly 80% (16/19). Operational note: if the platform counts only the
+latest saved submission, a failed run may be what's currently standing — banking a
+passing roll has priority over further experiments.
+
+Run 11 lesson (2026-07-10): the SAME image that scored 84.2% (run 9) scored ~78.9% on
+resubmission — **run-to-run accuracy noise is ±1 judge task on identical code**, so the
+gate is stochastic for our config, and single-run deltas of one task (~5.3pt) cannot
+distinguish a real regression from noise. Only ≥2-task moves (like the two factual
+failures at 73.7%) are signal. If run 11 failed the gate, the threshold bracket narrows
+to (78.9%, 84.2%] — consistent with a threshold of exactly 80% (need 16/19). End-game
+consequence for the freeze window: the final submission is itself a judge-roll; leave
+enough quota to re-submit the anchor if the final run rolls a 15/19.
+
+Cut #4 lesson: 73.7% is the exact same 14/19 as the "1-2 sentences" failure — most
+likely the same ~2 factual tasks fail whenever factual's output budget drops below its
+cliff, which now sits somewhere in (60, 120] words. "Under 120 words" is the proven
+floor; factual's output is load-bearing for the judge (explanatory completeness, not
+just the fact). **Phase B is closed**: best state is cut #3 (`86cf241`-equivalent,
+5085 tokens, gate held). The path to <4000 now runs exclusively through Phase C
+(shedding the ~100/call minimax prompt tax by moving categories off LARGE).
+
+Cut #3 lesson: the actual saving (−175) undershot the probe-based prediction — real
+math/logic answers under the old "brief steps" wording were already shorter than the
+probe's worst case, and/or the judge set holds fewer math/logic tasks than the ~5
+assumed. Output-side instruction cuts on math/logic are now largely exhausted; what
+remains is factual verbosity (cut #4 measures it) and the structural minimax prompt
+tax (~700–800/run) that only a Phase C tier move can touch.
 
 Readings: 47.4% ≈ 9/19, 68.4% ≈ 13/19, 57.9% ≈ 11/19, 63.2% ≈ 12/19, 84.2% ≈ 16/19,
 73.7% ≈ 14/19 — judge set is ~19 tasks. **Gate threshold is bracketed at (73.7%, 84.2%]**
 — tightest evidence so far on where it actually sits.
 
-### Run 5→6 regression: cut #2 (factual → "1-2 sentences") cost ~2 tasks (2026-07-09)
+### Run 5→7 regression: cut #2 (factual → "1-2 sentences") cost ~2 tasks (2026-07-09)
 
-Run 6 bundled two changes (cut #1 filler trim + cut #2 factual squeeze) so, same as the
-run 2→3 confound, this isn't a clean isolation — but cut #2 is the far riskier change
-(a semantic cut to answer length, not just wording) on the highest-task-share category
-that also doubles as the router's misroute default on LARGE. Reverted cut #2 back to the
-run-5-proven "under 120 words"; kept cut #1 (filler-only, preserves every functional
-directive, plausibly neutral). Next scored run should isolate whether cut #1 alone is
-actually free, once back above the gate.
+Cut #1 rode its own scored run (6) and only moved tokens −13, so cut #2 in run 7 is
+cleanly isolated as the regression: a semantic cut to answer length (not just wording)
+on the highest-task-share category that also doubles as the router's misroute default
+on LARGE. Reverted cut #2 back to the run-5-proven "under 120 words"; kept cut #1.
+Cut #1's own lesson: it saved 13 tokens against an input-side prediction of ~140 —
+run-to-run token noise is ~±100, so **cuts below ~200 predicted tokens are unmeasurable**
+and wording micro-trims are a dead end.
+
+### Token-cost probe on the public endpoint (2026-07-10) — numbers for Stage 2 cuts
+
+`scratchpad/probe_tokens.py` hit the PUBLIC Fireworks endpoint with the team key using
+our exact production instructions (system+user shape, `reasoning_effort="none"`,
+temperature 0). Public deployment may differ from the judges' proxy — treat as strong
+approximation, not ground truth. All six answers were CORRECT.
+
+| probe | model | prompt | completion | note |
+|---|---|---|---|---|
+| math, current "brief steps" | minimax-m3 | 163 | **38** | steps + Answer line |
+| math, answer-only | minimax-m3 | 158 | **7** | correct without any steps |
+| logic, current "numbered steps" | minimax-m3 | 176 | **30** | |
+| logic, answer-only | minimax-m3 | 164 | **4** | correct without any steps |
+| debug, current (bug sentence + code) | kimi-k2p7-code | 77 | **69** | |
+| debug, code-only | kimi-k2p7-code | 73 | **43** | −38% |
+
+Findings:
+1. **`reasoning_effort="none"` suppresses minimax completely** (`reasoning_len=0` on
+   every call) and correctness held even with zero visible steps on these samples.
+   minimax OUTPUT is cheap — completions are not where run 5's 5273 went.
+2. **minimax bills ~+95–100 hidden PROMPT tokens per call.** Identical-size content
+   costs ~77 prompt tokens on kimi but ~160+ on minimax; the variable part tracks
+   instruction length 1:1, so the fixed overhead is ~100/call (hidden preamble or
+   tokenizer, either way billed). With factual+math+logic ≈ 7–8 judge tasks on LARGE,
+   that's **~700–800 tokens/run of structural overhead tied to the tier mapping**.
+3. kimi-k2p7-code is now reachable on the public key (was 429-locked on 2026-07-08)
+   and is terse; "code only" cuts debug by ~38% on the sample.
+
+Implications for reaching <4000 total (from the 5260 baseline, need ≈ −1300):
+- Phase B (instruction cuts, one per submission, probe-backed): math/logic to
+  "at most 2 short steps" or answer-only (−250–500); debug to code-only, codegen
+  "no comments" (−100–150); factual to "under 60 words" (−100–200; "1-2 sentences"
+  is proven too far, 4× that budget is the untested middle).
+- Phase C (structural, if B lands short): move ONE of factual|math+logic off minimax
+  to MEDIUM to shed the ~100/call prompt tax (−200–300 plus shorter gemma answers);
+  factual→MEDIUM sacrifices the misroute-insurance design, math+logic→MEDIUM re-tests
+  what run 2 could not isolate. Each is its own scored experiment.
+- Expected landing: B alone ≈ 4400–4700; B + one C move ≈ 3900–4300.
 
 ### Root cause of the run 2→3 regression, now cleanly decomposed (2026-07-09)
 

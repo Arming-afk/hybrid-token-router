@@ -10,12 +10,21 @@ import os
 import sys
 import time
 
-from . import client, models, prompts, router
+from . import client, local, models, prompts, router
 
 INPUT_PATH = os.environ.get("INPUT_PATH", "/input/tasks.json")
 OUTPUT_PATH = os.environ.get("OUTPUT_PATH", "/output/results.json")
 DEADLINE_SECONDS = 8.5 * 60  # harness kills at 10 min; leave margin to write output
 CONCURRENCY = 6  # gentler on the proxy's rate limits; 429-hit answers come back empty
+
+# Local-first: verified local answers cost zero tokens. Enabled at startup only if
+# the Ollama sidecar responds (fail-open: without it, behavior is the proven
+# remote-only config). Local generations are serialized — the 2 vCPU grading box
+# can only really run one at a time — and skipped when the global budget runs low,
+# because a remote fallback takes ~2-7s while a local attempt can take ~15s.
+LOCAL_ENABLED = False
+LOCAL_LOCK = asyncio.Lock()
+LOCAL_MIN_REMAINING_SECONDS = 150
 
 START = time.monotonic()
 
@@ -30,41 +39,84 @@ def log(event: str, **fields) -> None:
 
 
 async def try_complete(task_id: str, category: str, model: str,
-                       messages: list[dict], max_tokens: int) -> str:
+                       messages: list[dict], max_tokens: int) -> tuple[str, bool]:
+    """Return (text, truncated). Truncated answers are likely wrong (code cut
+    mid-function, missing Answer line) — callers escalate them like blanks."""
     try:
         text, usage = await client.complete(model, messages, max_tokens)
         log("USAGE", task_id=task_id, category=category, model=model, **usage)
         CALL_LOG.append({"task_id": task_id, "category": category, "model": model, **usage})
-        return text
+        return text, bool(usage.get("truncated"))
     except Exception as error:
         log("ERROR", task_id=task_id, model=model, error=str(error)[:200])
-        return ""
+        return "", False
 
 
 async def llm_classify(task_id: str, prompt: str, tiers: dict) -> str:
-    text = await try_complete(task_id, "router", tiers["SMALL"],
-                              router.fallback_messages(prompt), max_tokens=2)
+    # The 2-token cap makes finish_reason=length expected here — ignore the flag.
+    text, _ = await try_complete(task_id, "router", tiers["SMALL"],
+                                 router.fallback_messages(prompt), max_tokens=2)
     return router.parse_fallback_letter(text)
+
+
+async def try_local(task_id: str, category: str, prompt: str) -> str:
+    """One serialized local attempt; returns "" whenever the remote path should run."""
+    remaining = DEADLINE_SECONDS - (time.monotonic() - START)
+    if remaining < LOCAL_MIN_REMAINING_SECONDS:
+        log("LOCAL_SKIP", task_id=task_id, note="global budget low")
+        return ""
+    async with LOCAL_LOCK:
+        try:
+            text = await asyncio.to_thread(local.generate, prompt, category)
+        except local.LocalError as error:
+            log("LOCAL_FAIL", task_id=task_id, error=str(error)[:120])
+            return ""
+    ok, reason = local.verify(prompt, category, text)
+    if not ok:
+        log("LOCAL_REJECTED", task_id=task_id, reason=reason)
+        return ""
+    log("LOCAL", task_id=task_id, category=category, chars=len(text))
+    return text
 
 
 async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: dict) -> None:
     task_id, prompt = task["task_id"], task["prompt"]
     async with sem:
+        # Pure arithmetic never touches the API: solved in-process for zero tokens,
+        # before classification so it works even when the router reads "847 x 23"
+        # as factual.
+        det = router.deterministic_math_answer(prompt)
+        if det is not None:
+            log("LOCAL", task_id=task_id, solver="deterministic-arithmetic")
+            results[task_id] = det
+            return
         category = router.classify(prompt)
         if category is None:
             category = await llm_classify(task_id, prompt, tiers)
+        if LOCAL_ENABLED and category in local.LOCAL_CATEGORIES:
+            text = await try_local(task_id, category, prompt)
+            if text:
+                results[task_id] = text
+                return
         messages, max_tokens, tier = prompts.render(category, prompt)
-        text = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
-        if not text.strip():
+        text, truncated = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
+        if not text.strip() or truncated:
             retry_tier = "LARGE" if tier != "LARGE" else "MEDIUM"
             # LARGE may be a reasoning model whose billed hidden thinking competes with
             # the visible answer for max_tokens; give the rescue attempt enough room.
             retry_max = max(max_tokens, 700)
-            text = await try_complete(task_id, category, tiers[retry_tier], messages, retry_max)
+            retry_text, _ = await try_complete(task_id, category, tiers[retry_tier],
+                                               messages, retry_max)
+            # An empty rescue must not erase a truncated-but-present first answer.
+            if retry_text.strip():
+                text = retry_text
         results[task_id] = prompts.postprocess(category, text)
 
 
 async def run(tasks: list[dict], results: dict) -> None:
+    global LOCAL_ENABLED
+    LOCAL_ENABLED = bool(local.LOCAL_CATEGORIES) and local.is_available()
+    log("LOCAL_STATUS", enabled=LOCAL_ENABLED, categories=sorted(local.LOCAL_CATEGORIES))
     tiers = models.build_tiers()
     log("TIERS", **tiers)
     sem = asyncio.Semaphore(CONCURRENCY)
