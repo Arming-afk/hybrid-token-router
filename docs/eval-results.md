@@ -50,6 +50,23 @@ The harness gives one number per submission — treat each run as one eval data 
 | 11 | `86cf241` (resubmitted) | rollback to cut #3 anchor after cut #4's failure — IDENTICAL code to run 9 | **~78.9%** (15/19) | **identical code lost ~1 judge task vs 84.2%** — accuracy noise is ±1 task and spans the gate |
 | 12 | `3a7f0e7` | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | **~78.9%** (15/19) | gate FAILED — but same roll as the anchor's own re-roll (run 11), so **inconclusive as accuracy evidence** |
 
+| 13 | `94619a7` | router hardening (5 false-positive classes fixed, dev 187/187) + Phase C move #1 + cut #3 — submitted as "latest tag at submit time", not the intended `3a7f0e7` re-roll | **94.7%** (18/19) | **gate PASSED, 5095 tokens — best accuracy ever** |
+
+Run 13 lessons (2026-07-10):
+- **The router fix is validated on the real judge set**: +2–3 tasks over the 15/19 band,
+  far outside ±1 noise. Factual misroutes were real and expensive, exactly as the hunt
+  predicted.
+- **Phase C's token saving is real but masked**: repaired misroutes now route INTO
+  factual on LARGE (minimax tax + full 120-word answers), adding back roughly what
+  math/logic→MEDIUM saved. Net 5095 ≈ run 9's 5085, at +2 tasks more accuracy.
+- **Operational**: no `latest` tag exists on GHCR (release.yml pushes SHA tags only,
+  digests immutable — verified). What ran was determined by the tag typed into the form:
+  the newest SHA at submit time, not the older tag assumed in the plan. ALWAYS pin and
+  double-check the exact SHA in the form before saving; record the submitted tag with
+  the result.
+- With 18/19 there is finally **+2 tasks of headroom above the gate** — token cuts can
+  resume without every experiment being a coin flip.
+
 Methodology constraint (confirmed 2026-07-10): **failed runs do not show a token count**
 on the results page. A token-cut experiment that drops below the gate returns ZERO
 information — accuracy is noise-ambiguous AND the token saving stays invisible. Every
