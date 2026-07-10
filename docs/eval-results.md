@@ -44,6 +44,15 @@ public model facts**, and defer measured tuning to real harness submissions (10/
 | 7 | LocalFirst-4 | jae | 3,753 | 100% | Jul 10 16:13 |
 | 8 | Divine v15 | Divine | 3,779 | 84.2% | Jul 10 19:08 |
 
+**Update (2026-07-11 ~01:50, user-reported):** yassai has dropped again —
+**1,292 tokens @ 94.7%** (was 2,228 @ 100%). Their public writeup (written at their
+4,826 cloud-only stage) closes with "further reduction needs a reliable zero-token
+local offload" — this drop is that offload landing, and they visibly sold one judge
+task (100% → 18/19) for it. Implication: the podium zone is now ~1.3–1.8k,
+unreachable for our architecture today; the Track A/B ceiling (~2.5–3.8k) fights
+for top 5. Plan unchanged — the final re-score on fresh prompts favors robust
+architectures over margins tuned to the current 19-task set.
+
 What this snapshot proves:
 - **High accuracy at 1,8–2,2k tokens is achievable** (Metis 94.7%, yassai 100%).
   The "cheap = sold accuracy" model is falsified; the top entries must be running
