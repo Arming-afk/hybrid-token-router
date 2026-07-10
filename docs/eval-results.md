@@ -31,6 +31,28 @@ public model facts**, and defer measured tuning to real harness submissions (10/
 - **LARGE `minimax-m3`** — unknown size; reasoning status UNVERIFIED (see follow-ups).
 - **`kimi-k2p7-code`** — code-specialized, unused by the 3-tier scheme.
 
+## Organizer clarification (2026-07-10) — read before choosing the final submission
+
+Announced on the contest channel:
+
+1. **Local-only / zero-API-call strategies are explicitly legitimate.** Our
+   in-image Ollama path breaks no rules.
+2. **Final rankings re-score submissions on NEW randomized prompts after the
+   close.** Every accuracy number in the table below measures fit to the
+   CURRENT 19-task set only. Prompt-specific margins (razor-thin caps, wording
+   tuned to observed tasks) may not carry; category-level and architectural
+   properties (router regexes, deterministic solver, verifiers + fail-open
+   local) do carry. Task COUNT may also change — the serialized local path and
+   the 150s local-budget guard matter if the final set is bigger.
+3. **No network isolation, but manual audits: routing inference outside
+   Fireworks = disqualification.** Localhost Ollama is fine under point 1;
+   runtime must make no outbound calls except `FIREWORKS_BASE_URL`
+   (verifiable with `docker run --network=none`).
+4. **Tie-breaker for equal tokens/accuracy: TBD by organizers.**
+
+Consequence for the endgame: pick the final image for **robustness on unseen
+prompts**, not for its score on the current set.
+
 ## Scored submission history (the only real accuracy numbers we have)
 
 The harness gives one number per submission — treat each run as one eval data point.
