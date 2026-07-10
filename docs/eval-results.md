@@ -31,6 +31,33 @@ public model facts**, and defer measured tuning to real harness submissions (10/
 - **LARGE `minimax-m3`** — unknown size; reasoning status UNVERIFIED (see follow-ups).
 - **`kimi-k2p7-code`** — code-specialized, unused by the 3-tier scheme.
 
+## Leaderboard snapshot (2026-07-10 ~23:00) — we are #9 at 4,178 @ 100%
+
+| # | entry | team | tokens | acc | scored |
+|---|---|---|---|---|---|
+| 1 | Metis | Kingdom of Science | **1,797** | 94.7% | Jul 10 22:45 |
+| 2 | Kestrel v0.68 | SoloPlayer | 1,798 | 89.5% | Jul 10 20:54 |
+| 3 | yassai | Solo Stack | 2,228 | **100%** | Jul 10 21:40 |
+| 4 | YOLOAI_v6 | YoloAI | 2,664 | 84.2% | Jul 10 16:03 |
+| 5 | TokenRouter prove or escalate | Sprint Sprint Win | 3,562 | 89.5% | Jul 10 20:50 |
+| 6 | Git it done v27 | GitCommit_and_Pray | 3,682 | 84.2% | Jul 10 23:02 |
+| 7 | LocalFirst-4 | jae | 3,753 | 100% | Jul 10 16:13 |
+| 8 | Divine v15 | Divine | 3,779 | 84.2% | Jul 10 19:08 |
+
+What this snapshot proves:
+- **High accuracy at 1,8–2,2k tokens is achievable** (Metis 94.7%, yassai 100%).
+  The "cheap = sold accuracy" model is falsified; the top entries must be running
+  broad local coverage that stays accurate — plausibly a better/specialized local
+  model (e.g. a coder-tuned 3B for code categories) or stronger verification.
+- **Scoring turnaround is now ~20 minutes** (Git it done: submitted 22:42,
+  scored 23:02) — many more experiment cycles fit before the Jul 11 23:00 close
+  than the endgame plan assumed.
+- Our realistic ceiling without new local coverage: summarization fix + cold-start
+  fix ≈ 3,3–3,8k → around rank 5–6. Breaking 3k needs code categories local,
+  which run 16 poisoned for plain qwen2.5:3b — but a coder-tuned sibling was
+  never tested and can be evaluated OFFLINE against tests/eval/{debug,codegen}.json
+  before risking a submission.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:
