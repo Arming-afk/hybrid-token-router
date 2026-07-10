@@ -31,11 +31,13 @@ FIRST_CALL_TIMEOUT = 25.0
 CALL_TIMEOUT = 15.0
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
 
-# Categories allowed to try local-first. The default is the set the LocalFirst
-# competitor converged on after their 68.4% local-heavy failure: the categories
-# where a 3B model is reliable AND failures are programmatically catchable.
+# Categories allowed to try local-first. Run 16 (all five local-eligible
+# categories) scored 15/19: verifiers catch format/syntax, not semantics, and
+# ~2-3 confidently-wrong local answers slipped through. Recovery follows the
+# LocalFirst playbook — bisect through the re-scoring loop. Current set: the
+# shortest-output, most-verifiable pair; widen one category per passing run.
 # factual/math/logic stay remote (kimi) — proven 18/19. Empty env disables local.
-_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization,debug,codegen")
+_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner")
 LOCAL_CATEGORIES = {c.strip() for c in _raw.split(",") if c.strip()}
 
 _BASE_INSTRUCTION = (

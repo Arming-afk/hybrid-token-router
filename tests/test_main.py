@@ -210,15 +210,20 @@ def test_rejected_local_answer_falls_back_to_the_api():
 
 
 def test_local_error_falls_back_to_the_api():
+    local_attempts = []
+
     async def api_ok(model, messages, max_tokens):
         return "remote answer", {}
 
     def broken_local(prompt, category):
+        local_attempts.append(category)
         raise local.LocalError("ollama down")
 
-    rows = run_pipeline([{"task_id": "a", "prompt": "Summarize this in one sentence: hello."}],
-                        api_ok, local_generate=broken_local)
+    rows = run_pipeline(
+        [{"task_id": "a", "prompt": "Extract all named entities from: Tim Cook visited Paris."}],
+        api_ok, local_generate=broken_local)
     assert rows[0]["answer"] == "remote answer"
+    assert local_attempts == ["ner"]  # the local path was really exercised
 
 
 def test_remote_categories_never_try_local():

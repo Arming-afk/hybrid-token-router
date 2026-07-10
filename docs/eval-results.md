@@ -54,7 +54,16 @@ The harness gives one number per submission — treat each run as one eval data 
 | 14 | `1a4947a` | **Moonshot bundle** (rank 1 posted 2600/84% — accuracy above the gate is wasted spend, so run 13's +2 headroom is converted to cuts): factual → MEDIUM + "under 50 words" (cap 120); sentiment → label only (cap 30); debug → corrected code only, no comments (cap 450); summarization → ≤3-sentence default; math/logic caps → 150 (2 steps kept as CoT); nothing on LARGE | **INFRA_ERROR** | not scored — image verified pullable (200) and CI green, so most likely a premature submit inside the ~30s build window or a transient harness failure |
 | 15 | `de9bbf4` | **Moonshot, fixed**: factual/math/logic MEDIUM → **CODE (kimi)** (gemma-31b 404s at grading; kimi is scored-run-proven and tax-free) + deterministic arithmetic solver (0 tokens) + truncation escalation | **94.7%** (18/19) | **gate PASSED, 4548 tokens — best on both axes** |
 
-| 16 | _(queued)_ | **Local-first architecture** (adapting the LocalFirst 100%@3753 design): Ollama + qwen2.5:3b baked into the image; sentiment/ner/summarization/debug/codegen try local first (0 tokens) behind zero-token verifiers (hedge/degenerate/labels/length-limits/ast.parse/function-name/unchanged-code), rejected or failed answers fall back to the proven remote path; factual/math/logic stay on kimi (18/19-proven). Fail-open: no Ollama → identical to run 15. Predicted ~1,900–2,700 if local sticks. Rollback anchor: `de9bbf4` | | |
+| 16 | `e9838d0` | **Local-first architecture**: Ollama + qwen2.5:3b in-image; 5 categories local behind zero-token verifiers; factual/math/logic stay on kimi | **78.9%** (15/19) | gate FAILED — ~2-3 silent local wrong answers slipped past the verifiers |
+| 17 | _(queued)_ | Local narrowed to **sentiment,ner** only (the shortest-output, most-verifiable categories); summarization/debug/codegen back to the proven remote path | | predicted ~4,000 at run-15 accuracy |
+
+Run 16 lesson (2026-07-10): verifiers catch format and syntax, not semantics — a
+confidently wrong local label/summary/algorithm passes every programmatic check. With
+~12 of 19 tasks answered locally, 2-3 semantic misses ≈ the observed 15/19. This is
+exactly the LocalFirst 68.4% experience; their recovery (and now ours) is category
+bisection through the re-scoring loop: shrink LOCAL_CATEGORIES to the safest set,
+re-measure, widen one category at a time. Standing recovery: re-save `de9bbf4`
+(4,548 @ 94.7%) whenever a passing entry needs to be on the board.
 
 Run 15 lessons (2026-07-10):
 - **−547 tokens at unchanged 18/19.** The moonshot's headroom-selling cuts (factual

@@ -26,6 +26,8 @@ RUN chmod +x entrypoint.sh
 
 # The harness injects only FIREWORKS_*; these defaults ARE the local-path config.
 # LOCAL_CATEGORIES="" disables local entirely (pure remote = the proven config).
-ENV LOCAL_CATEGORIES="sentiment,ner,summarization,debug,codegen"
+# Run 16 (five local categories) failed at 15/19 — bisecting: safest pair first,
+# widen one category per passing run.
+ENV LOCAL_CATEGORIES="sentiment,ner"
 
 ENTRYPOINT ["./entrypoint.sh"]
