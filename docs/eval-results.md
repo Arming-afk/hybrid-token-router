@@ -48,7 +48,16 @@ The harness gives one number per submission — treat each run as one eval data 
 | 9 | `86cf241` | cut #3: math/logic → "at most 2 short steps" + codegen "No comments." | (pass; % not recorded) | tokens **5085** (−175 vs 5260; predicted −300–550) |
 | 10 | `f4c9742` | cut #4: factual → "under 60 words" (middle between proven-120 and failed-1-2-sentences) | **73.7%** | gate FAILED — reverted |
 | 11 | `86cf241` (resubmitted) | rollback to cut #3 anchor after cut #4's failure — IDENTICAL code to run 9 | **~78.9%** (15/19) | **identical code lost ~1 judge task vs 84.2%** — accuracy noise is ±1 task and spans the gate |
-| 12 | `3a7f0e7` | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | | submitted before re-rolling the anchor: same spend buys new info instead of a coin-flip re-roll |
+| 12 | `3a7f0e7` | Phase C move #1: math+logic → MEDIUM, instructions/caps unchanged (sheds the ~100/call minimax prompt tax; predicted −400–600 from 5085; blind — gemma-4-31b-it 404s on the public key, re-probed 2026-07-10) | **~78.9%** (15/19) | gate FAILED — but same roll as the anchor's own re-roll (run 11), so **inconclusive as accuracy evidence** |
+
+Run 12 lesson (2026-07-10): 15/19 is exactly what the UNCHANGED anchor rolled in run 11,
+so Phase C move #1 shows no detectable accuracy cost — the score can't distinguish
+"MEDIUM lost a task" from the anchor's own noise. The token saving (predicted −400–600)
+is the real payoff and stays unverified until a passing roll banks it (failed runs
+don't rank). Threshold evidence tightens: 78.9% fails ⇒ bracket **(78.9%, 84.2%]**,
+consistent with exactly 80% (16/19). Operational note: if the platform counts only the
+latest saved submission, a failed run may be what's currently standing — banking a
+passing roll has priority over further experiments.
 
 Run 11 lesson (2026-07-10): the SAME image that scored 84.2% (run 9) scored ~78.9% on
 resubmission — **run-to-run accuracy noise is ±1 judge task on identical code**, so the
