@@ -54,6 +54,8 @@ The harness gives one number per submission — treat each run as one eval data 
 | 14 | `1a4947a` | **Moonshot bundle** (rank 1 posted 2600/84% — accuracy above the gate is wasted spend, so run 13's +2 headroom is converted to cuts): factual → MEDIUM + "under 50 words" (cap 120); sentiment → label only (cap 30); debug → corrected code only, no comments (cap 450); summarization → ≤3-sentence default; math/logic caps → 150 (2 steps kept as CoT); nothing on LARGE | **INFRA_ERROR** | not scored — image verified pullable (200) and CI green, so most likely a premature submit inside the ~30s build window or a transient harness failure |
 | 15 | `de9bbf4` | **Moonshot, fixed**: factual/math/logic MEDIUM → **CODE (kimi)** (gemma-31b 404s at grading; kimi is scored-run-proven and tax-free) + deterministic arithmetic solver (0 tokens) + truncation escalation | **94.7%** (18/19) | **gate PASSED, 4548 tokens — best on both axes** |
 
+| 16 | _(queued)_ | **Local-first architecture** (adapting the LocalFirst 100%@3753 design): Ollama + qwen2.5:3b baked into the image; sentiment/ner/summarization/debug/codegen try local first (0 tokens) behind zero-token verifiers (hedge/degenerate/labels/length-limits/ast.parse/function-name/unchanged-code), rejected or failed answers fall back to the proven remote path; factual/math/logic stay on kimi (18/19-proven). Fail-open: no Ollama → identical to run 15. Predicted ~1,900–2,700 if local sticks. Rollback anchor: `de9bbf4` | | |
+
 Run 15 lessons (2026-07-10):
 - **−547 tokens at unchanged 18/19.** The moonshot's headroom-selling cuts (factual
   "under 50 words", sentiment label-only, debug code-only) cost NOTHING measurable —

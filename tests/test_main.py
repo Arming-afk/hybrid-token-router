@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 os.environ.setdefault("ALLOWED_MODELS", "acc/tiny-1b,acc/mid-7b,acc/big-70b")
 
-from src import client, main, router  # noqa: E402
+from src import client, local, main, router  # noqa: E402
 
 
 async def echo_complete(model, messages, max_tokens):
@@ -25,23 +25,32 @@ async def echo_complete(model, messages, max_tokens):
 last_run_dir = None  # tmp dir of the most recent run_pipeline call, for log assertions
 
 
-def run_pipeline(tasks_payload, fake_complete):
-    """Run main.main() against a fake client.complete; return parsed results.json."""
+def run_pipeline(tasks_payload, fake_complete, local_generate=None):
+    """Run main.main() against a fake client.complete; return parsed results.json.
+    local_generate: optional fake for local.generate — its presence also fakes the
+    Ollama availability probe, so the local-first path activates. By default the
+    probe is forced False so the suite is deterministic on machines running Ollama.
+    """
     global last_run_dir
     tmp = tempfile.mkdtemp()
     last_run_dir = tmp
     in_path, out_path = os.path.join(tmp, "tasks.json"), os.path.join(tmp, "results.json")
     with open(in_path, "w", encoding="utf-8") as f:
         json.dump(tasks_payload, f)
-    saved = (client.complete, main.INPUT_PATH, main.OUTPUT_PATH)
+    saved = (client.complete, main.INPUT_PATH, main.OUTPUT_PATH,
+             local.is_available, local.generate)
     client.complete, main.INPUT_PATH, main.OUTPUT_PATH = fake_complete, in_path, out_path
+    local.is_available = lambda timeout=3.0: local_generate is not None
+    if local_generate is not None:
+        local.generate = local_generate
     main.CALL_LOG.clear()
     try:
         main.main()
         with open(out_path, encoding="utf-8") as f:
             return json.load(f)
     finally:
-        client.complete, main.INPUT_PATH, main.OUTPUT_PATH = saved
+        (client.complete, main.INPUT_PATH, main.OUTPUT_PATH,
+         local.is_available, local.generate) = saved
 
 
 def test_happy_path_answers_every_task():
@@ -166,6 +175,66 @@ def test_word_problems_still_go_to_the_api():
     ], spy)
     assert all(r["answer"] == "model answer" for r in rows)
     assert len(calls) == 3
+
+
+def test_verified_local_answer_skips_the_api():
+    api_calls = []
+
+    async def api_spy(model, messages, max_tokens):
+        api_calls.append(model)
+        return "remote answer", {}
+
+    def fake_local(prompt, category):
+        return "Positive - the reviewer loved it."
+
+    rows = run_pipeline([{"task_id": "a", "prompt": "Classify the sentiment of this review: great!"}],
+                        api_spy, local_generate=fake_local)
+    assert rows[0]["answer"] == "Positive - the reviewer loved it."
+    assert api_calls == []
+
+
+def test_rejected_local_answer_falls_back_to_the_api():
+    api_calls = []
+
+    async def api_spy(model, messages, max_tokens):
+        api_calls.append(model)
+        return "remote answer", {}
+
+    def hedging_local(prompt, category):
+        return "I'm not sure I can answer that."
+
+    rows = run_pipeline([{"task_id": "a", "prompt": "Classify the sentiment of this review: great!"}],
+                        api_spy, local_generate=hedging_local)
+    assert rows[0]["answer"] == "remote answer"
+    assert len(api_calls) == 1
+
+
+def test_local_error_falls_back_to_the_api():
+    async def api_ok(model, messages, max_tokens):
+        return "remote answer", {}
+
+    def broken_local(prompt, category):
+        raise local.LocalError("ollama down")
+
+    rows = run_pipeline([{"task_id": "a", "prompt": "Summarize this in one sentence: hello."}],
+                        api_ok, local_generate=broken_local)
+    assert rows[0]["answer"] == "remote answer"
+
+
+def test_remote_categories_never_try_local():
+    local_calls = []
+
+    async def api_ok(model, messages, max_tokens):
+        return "remote answer", {}
+
+    def local_spy(prompt, category):
+        local_calls.append(category)
+        return "local answer"
+
+    rows = run_pipeline([{"task_id": "a", "prompt": "What is photosynthesis?"}],
+                        api_ok, local_generate=local_spy)
+    assert rows[0]["answer"] == "remote answer"  # factual stays remote
+    assert local_calls == []
 
 
 def test_ambiguous_prompt_pays_llm_classifier_first():

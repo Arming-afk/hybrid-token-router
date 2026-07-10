@@ -10,12 +10,21 @@ import os
 import sys
 import time
 
-from . import client, models, prompts, router
+from . import client, local, models, prompts, router
 
 INPUT_PATH = os.environ.get("INPUT_PATH", "/input/tasks.json")
 OUTPUT_PATH = os.environ.get("OUTPUT_PATH", "/output/results.json")
 DEADLINE_SECONDS = 8.5 * 60  # harness kills at 10 min; leave margin to write output
 CONCURRENCY = 6  # gentler on the proxy's rate limits; 429-hit answers come back empty
+
+# Local-first: verified local answers cost zero tokens. Enabled at startup only if
+# the Ollama sidecar responds (fail-open: without it, behavior is the proven
+# remote-only config). Local generations are serialized — the 2 vCPU grading box
+# can only really run one at a time — and skipped when the global budget runs low,
+# because a remote fallback takes ~2-7s while a local attempt can take ~15s.
+LOCAL_ENABLED = False
+LOCAL_LOCK = asyncio.Lock()
+LOCAL_MIN_REMAINING_SECONDS = 150
 
 START = time.monotonic()
 
@@ -50,6 +59,26 @@ async def llm_classify(task_id: str, prompt: str, tiers: dict) -> str:
     return router.parse_fallback_letter(text)
 
 
+async def try_local(task_id: str, category: str, prompt: str) -> str:
+    """One serialized local attempt; returns "" whenever the remote path should run."""
+    remaining = DEADLINE_SECONDS - (time.monotonic() - START)
+    if remaining < LOCAL_MIN_REMAINING_SECONDS:
+        log("LOCAL_SKIP", task_id=task_id, note="global budget low")
+        return ""
+    async with LOCAL_LOCK:
+        try:
+            text = await asyncio.to_thread(local.generate, prompt, category)
+        except local.LocalError as error:
+            log("LOCAL_FAIL", task_id=task_id, error=str(error)[:120])
+            return ""
+    ok, reason = local.verify(prompt, category, text)
+    if not ok:
+        log("LOCAL_REJECTED", task_id=task_id, reason=reason)
+        return ""
+    log("LOCAL", task_id=task_id, category=category, chars=len(text))
+    return text
+
+
 async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: dict) -> None:
     task_id, prompt = task["task_id"], task["prompt"]
     async with sem:
@@ -64,6 +93,11 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
         category = router.classify(prompt)
         if category is None:
             category = await llm_classify(task_id, prompt, tiers)
+        if LOCAL_ENABLED and category in local.LOCAL_CATEGORIES:
+            text = await try_local(task_id, category, prompt)
+            if text:
+                results[task_id] = text
+                return
         messages, max_tokens, tier = prompts.render(category, prompt)
         text, truncated = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
         if not text.strip() or truncated:
@@ -80,6 +114,9 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
 
 
 async def run(tasks: list[dict], results: dict) -> None:
+    global LOCAL_ENABLED
+    LOCAL_ENABLED = bool(local.LOCAL_CATEGORIES) and local.is_available()
+    log("LOCAL_STATUS", enabled=LOCAL_ENABLED, categories=sorted(local.LOCAL_CATEGORIES))
     tiers = models.build_tiers()
     log("TIERS", **tiers)
     sem = asyncio.Semaphore(CONCURRENCY)
