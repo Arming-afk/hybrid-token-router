@@ -150,6 +150,24 @@ summarization answer contained "U.S." and passed the one-sentence verifier —
 the rung-3 abbrev fix live). Expected landing ~3.0–3.5k if the code categories
 hold on the judge set; risk budget is run 18's +3-task headroom above the gate.
 
+### Coder-rung validation (2026-07-11 ~12:40, person3 machine — GO)
+
+`validate_coder_rung.sh` stages, run against native Windows ollama pinned to 2
+cores (docker unusable on this connection — stage 4's `--network=none` audit
+SKIPPED; risk accepted since the entrypoint/network shape is unchanged from
+graded images):
+
+1. Offline gate: 63 pytest + router 187/187 — green.
+2. Semantic code eval on the CURRENT code (post-0f9c19a): **debug 10/10,
+   codegen 9/10** (same single ZeroDivision miss as the morning run) — GO.
+3. Full-agent rehearsal with the image's exact env
+   (`LOCAL_CATEGORIES=sentiment,ner,summarization,debug,codegen`,
+   `LOCAL_MODEL=qwen2.5-coder:3b`, remote dead): all five categories answered
+   locally (debug 4.1s, codegen 4.3s), all task_ids present, 23.6s total.
+
+`6e4fa3a` is CI-built, manifest 200. Submission gated ONLY on run 20
+(`7bb50c4` re-save) confirming the judge set didn't shift.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:
