@@ -68,6 +68,19 @@ SECONDS_PER_KB = 8.0
 MAX_CALL_TIMEOUT = 40.0
 KEEP_ALIVE = "30m"  # never unload the model mid-run
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
+# codegen's local success rate stayed 0/13 even after the 30.0/55.0 timeout fix
+# above fixed debug (docs/eval-results.md "Phase D follow-up #2"): that fix gave
+# more WALL-CLOCK ceiling, but codegen only got 1 attempt through the serialized
+# queue, and pushing the ceiling higher still was already proven a net-negative
+# queueing trade-off (a call that holds LOCAL_LOCK longer starves the rest of the
+# queue). The follow-up's conclusion was to shrink codegen's *service time*
+# instead of extending its *time budget* further: a lower generation cap finishes
+# faster, so a call both clears the ceiling more often AND frees LOCAL_LOCK sooner
+# for the next queued task. codegen prompts in the scale rehearsal (single short
+# functions: is_palindrome, fizzbuzz, a Stack class, debounce...) need well under
+# 250 tokens even fully commented, so this should not reintroduce truncation.
+# debug is untouched — it is already proven working at the shared NUM_PREDICT.
+CODEGEN_NUM_PREDICT = 250
 
 # Categories allowed to try local-first. The MODULE default is the proven-safe
 # rung (sentiment,ner,summarization → run 18, 100% @ 4,178); anyone importing
@@ -149,18 +162,26 @@ def _timeout_for(prompt_chars: int, first_call: bool, category: str = "") -> flo
     return max(scaled, FIRST_CALL_TIMEOUT) if first_call else scaled
 
 
+def _num_predict_for(category: str) -> int:
+    """codegen gets a lower generation cap to shrink its service time under the
+    serialized queue (see CODEGEN_NUM_PREDICT). Every other category keeps the
+    shared cap unchanged."""
+    return CODEGEN_NUM_PREDICT if category == "codegen" else NUM_PREDICT
+
+
 def generate(prompt: str, category: str) -> str:
     """Blocking Ollama call (main.py runs it in a thread, serialized — the 2 vCPU
     box effectively processes one local generation at a time anyway)."""
     global _first_call_done
     timeout = _timeout_for(len(prompt), not _first_call_done, category)
     instruction = _BASE_INSTRUCTION + _CATEGORY_INSTRUCTIONS.get(category, "")
+    num_predict = _num_predict_for(category)
     payload = {
         "model": MODEL,
         "prompt": instruction + prompt,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
-        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": NUM_PREDICT},
+        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": num_predict},
     }
     req = urllib.request.Request(
         f"{BASE_URL}/api/generate", data=json.dumps(payload).encode(),

@@ -421,6 +421,57 @@ now genuinely proven at 30.0/55.0.
 the named constants, not hardcoded values, so it verified both configurations
 without edits).
 
+### Phase D follow-up #3 (2026-07-11, person3, branch `person3/codegen-num-predict`) — lower codegen NUM_PREDICT: inconclusive, NOT merged to main
+
+Direct test of the "next candidate" flagged above: `CODEGEN_NUM_PREDICT = 250`
+(vs. the shared `NUM_PREDICT = 450`), applied only to the codegen category via a
+new `_num_predict_for(category)` helper in `src/local.py` — debug is untouched and
+still uses 450. Rationale: codegen's one observed local attempt (30.0/55.0
+baseline) never succeeded, and the hypothesis was that a shorter generation cap
+finishes faster, both clearing the timeout more often and freeing `LOCAL_LOCK`
+sooner for the next queued task. 65/65 tests pass (`test_codegen_gets_a_lower_generation_cap_than_other_categories`
+asserts the cap only applies to codegen).
+
+Re-ran the identical 106-task rehearsal (`tests/scale_tasks_100.json`, same
+`--cpus=2 --memory=4g`, bogus key). **Result: codegen got ZERO local attempts
+again — same as the rejected 45.0/70.0 config, not the 1 attempt seen at the
+30.0/55.0 baseline** — so the change was never actually exercised:
+
+| metric | 30.0/55.0 baseline | this run (CODEGEN_NUM_PREDICT=250) |
+|---|---|---|
+| codegen local success | 0/13 | 0/13 |
+| codegen local attempts (of 13) | 1 | **0** (all 13 `LOCAL_SKIP`) |
+| debug local success | 5/13 | 3/13 |
+| debug per-call elapsed | 18.6-25.6s | 27.2-30.6s |
+| total answered (of 106) | 25 | 21 |
+
+**Why this is inconclusive, not a regression verdict:** every category's local
+calls ran slower this pass (debug's own elapsed times shifted up ~9-5s despite
+zero code changes to debug's path), and `codegen`'s 13 tasks are still skipped
+via `LOCAL_SKIP` (`"global budget low"` / `"budget low after lock wait"`) before
+ever reaching `generate()` — the queue never got far enough to spend the local
+budget on a codegen call at all, so `CODEGEN_NUM_PREDICT` had nothing to act on.
+The most likely explanation is environmental (this machine's Docker Desktop
+backend under variable host load), not the code change: lowering only
+`num_predict` for codegen cannot plausibly slow down debug's unrelated calls.
+`tests/scale_tasks_100.json` also structurally disadvantages codegen regardless
+of timing — 7 of its 13 tasks (`S_C1`-`S_C7`) sit in the back half of the task
+list, so they are scheduled later and see a smaller remaining budget than
+earlier categories by construction, independent of any timeout/NUM_PREDICT
+setting.
+
+**Decision: do NOT merge this branch.** The change is plausible and the test
+found no evidence it hurts (codegen's own path was never exercised, so it can't
+be blamed for the total-answered drop), but there is also no positive evidence it
+helps, since codegen never got a turn either way. Merging on a coin-flip result
+this close to the deadline would put the proven 100%@3,853 anchor (`main`,
+`6c8dcc4`) at risk for an unvalidated change. Kept on `person3/codegen-num-predict`
+for whoever wants to pick this up post-deadline: next time, isolate the
+service-time question directly (call `local.generate()` on the 13 codegen
+prompts back-to-back under the same CPU throttle, no queue/budget involved) instead
+of re-running the full noisy 106-task rehearsal, which conflates queue position,
+environmental jitter, and the NUM_PREDICT effect into one number.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:

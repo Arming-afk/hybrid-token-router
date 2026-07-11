@@ -5,8 +5,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.local import (  # noqa: E402
-    CALL_TIMEOUT, CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT, FIRST_CALL_TIMEOUT,
-    MAX_CALL_TIMEOUT, LOCAL_CATEGORIES, _timeout_for, verify,
+    CALL_TIMEOUT, CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT, CODEGEN_NUM_PREDICT,
+    FIRST_CALL_TIMEOUT, MAX_CALL_TIMEOUT, NUM_PREDICT, LOCAL_CATEGORIES,
+    _num_predict_for, _timeout_for, verify,
 )
 
 
@@ -68,6 +69,13 @@ def test_code_categories_get_a_higher_timeout_floor_and_ceiling():
     # Non-code categories are unaffected (default category arg preserves old behavior).
     assert _timeout_for(50, first_call=False, category="sentiment") == (
         _timeout_for(50, first_call=False))
+
+
+def test_codegen_gets_a_lower_generation_cap_than_other_categories():
+    assert CODEGEN_NUM_PREDICT < NUM_PREDICT
+    assert _num_predict_for("codegen") == CODEGEN_NUM_PREDICT
+    for other in ("sentiment", "ner", "summarization", "debug", "factual", "math", "logic"):
+        assert _num_predict_for(other) == NUM_PREDICT
 
 
 def test_summarization_rejects_non_summaries():
