@@ -6,21 +6,26 @@ This file is the operational side of that rule. The scored history itself lives 
 
 ## Rollback anchor — memorize this
 
-Best proven run: **run 18 — 100% (19/19), 4,178 tokens, gate PASSED.**
+Best proven run: **run 22 — 100% (19/19), 3,853 tokens, gate PASSED — on the current
+(post-run-19) judge set.**
 
 ```
-ghcr.io/arming-afk/hybrid-token-router:7bb50c4
+ghcr.io/arming-afk/hybrid-token-router:6c8dcc4
 ```
 
 Images are tagged by git SHA and immutable: **rolling back = submitting that existing
 image reference on the portal. No rebuild, no merge, no waiting for CI.** Update this
 anchor (and this file) whenever a newer run both passes the gate and costs fewer tokens.
 
-Note (2026-07-11, run 20): re-saving this exact image scored 73.7% on the fresh judge
-set, not 100% — the drop is the judge prompts changing, not this image regressing (see
-`docs/eval-results.md` run 20 bisect verdict). It is still the right rollback anchor:
-it is the newest config that is bit-identical to a proven-passing run, and the fresh-set
-number moves with the judge set for every candidate image, not just this one.
+This supersedes run 18 (`7bb50c4`, 4,178 tokens) — run 22 is strictly better: same
+100% accuracy, 325 fewer tokens, AND scored on the fresh judge set that run 18's
+own re-save (run 20) failed at only 73.7% on. The debug-category local timeout fix
+(`docs/eval-results.md` "Phase D follow-up" sections) is the one deliberate change
+between this run and the failing `6e4fa3a`/run-20 attempts on the same judge set —
+strong evidence it was load-bearing, not noise. `becc4c8` (branch
+`person3/codegen-timeout-tune`) is functionally identical to `6c8dcc4` (comment/doc
+changes only, verified via `git diff 6c8dcc4 becc4c8 -- src/ tests/ Dockerfile
+entrypoint.sh` — empty) and safe to submit as an equivalent of this anchor.
 
 ## Experiment cycle (one cut per run)
 
