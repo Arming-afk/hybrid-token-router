@@ -1,4 +1,4 @@
-"""Local inference sidecar (Ollama + qwen2.5-coder:3b) and its zero-token answer verifiers.
+"""Local inference sidecar (Ollama + qwen2.5:3b) and its zero-token answer verifiers.
 
 Contest rule: "Local models and tokens used locally count as zero for the final
 score." Every task in LOCAL_CATEGORIES is attempted here first; a verified local
@@ -25,33 +25,20 @@ import urllib.error
 import urllib.request
 
 BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-# qwen2.5-coder:3b replaced the plain sibling after offline evals (2026-07-11):
-# debug 10/10 and codegen 9/10 semantically correct (run 16's killers), at parity
-# with qwen2.5:3b on sentiment/ner/summarization. One model only — 4GB RAM cannot
-# hold two 3B models, and a swap costs 10-20s per switch on the grading box.
-MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5-coder:3b")
+MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5:3b")
 # First call pays the model load from disk (~2GB into RAM); later calls don't.
-# Measured 2026-07-11 (2-core pin): a loaded-under-contention first call took 57s
-# while the same prompt warm took 3.4s — 25s loses the race against the
-# entrypoint's background warmup and burns one remote spend per run.
-FIRST_CALL_TIMEOUT = 60.0
+FIRST_CALL_TIMEOUT = 25.0
 CALL_TIMEOUT = 15.0
-# Measured (2-core pin, full RAM): even 870-word passages answer in ~5s warm, so
-# 15s is enough for compute alone. The raised cap is insurance for the grading
-# box's 4GB RAM (KV-cache pressure can stall long prompts there — not testable
-# natively); it costs nothing when answers land in 5s, and the worst case is
-# bounded by main.py's LOCAL_MIN_REMAINING_SECONDS budget guard.
-SUMMARIZATION_CALL_TIMEOUT = 45.0
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
 
-# Categories allowed to try local-first. Run 16 (all five local on PLAIN
-# qwen2.5:3b) scored 15/19 — code categories were the poison. Run 17
-# (sentiment,ner) and run 18 (+summarization, 19/19) rebuilt trust one rung at
-# a time. This rung re-adds debug+codegen on the CODER model, which passed the
-# offline semantic eval (generated code executed against assertions) that the
-# plain model failed. factual/math/logic stay remote (kimi) — proven 18/19.
-# Empty env disables local entirely.
-_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization,debug,codegen")
+# Categories allowed to try local-first. Run 16 (all five local-eligible
+# categories) scored 15/19: verifiers catch format/syntax, not semantics, and
+# ~2-3 confidently-wrong local answers slipped through. Recovery follows the
+# LocalFirst playbook — bisect through the re-scoring loop. Run 17
+# (sentiment,ner) passed 17/19 @ 4,199; this rung adds summarization, whose
+# word/sentence-limit verifiers already exist. Widen one category per passing run.
+# factual/math/logic stay remote (kimi) — proven 18/19. Empty env disables local.
+_raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization")
 LOCAL_CATEGORIES = {c.strip() for c in _raw.split(",") if c.strip()}
 
 _BASE_INSTRUCTION = (
@@ -114,9 +101,7 @@ def generate(prompt: str, category: str) -> str:
     """Blocking Ollama call (main.py runs it in a thread, serialized — the 2 vCPU
     box effectively processes one local generation at a time anyway)."""
     global _first_call_done
-    timeout = SUMMARIZATION_CALL_TIMEOUT if category == "summarization" else CALL_TIMEOUT
-    if not _first_call_done:
-        timeout = max(timeout, FIRST_CALL_TIMEOUT)
+    timeout = CALL_TIMEOUT if _first_call_done else FIRST_CALL_TIMEOUT
     instruction = _BASE_INSTRUCTION + _CATEGORY_INSTRUCTIONS.get(category, "")
     payload = {
         "model": MODEL,
@@ -188,19 +173,8 @@ def _extract_code(text: str) -> str:
     return ""
 
 
-# Periods that do not end a sentence: dotted acronyms (U.S., e.g.), common
-# abbreviations, and single-letter initials before a capitalized name. Masking
-# them keeps the counter from rejecting good answers; erring lenient is the
-# right direction — over-counting burns paid remote fallbacks on correct output.
-_ABBREV = re.compile(
-    r"\b(?:[A-Za-z]\.){2,}"
-    r"|\b(?:Dr|Mr|Mrs|Ms|Prof|Rev|Gen|Sen|St|No|Fig|vs|etc|approx|Inc|Corp|Ltd|Co|Jr|Sr)\."
-    r"|\b[A-Z]\.(?=\s+[A-Z][a-z])")
-
-
 def _sentence_count(text: str) -> int:
-    masked = _ABBREV.sub(lambda m: m.group(0).replace(".", ""), text.strip())
-    parts = re.split(r"[.!?]+(?:\s|$)", masked)
+    parts = re.split(r"[.!?]+(?:\s|$)", text.strip())
     return len([p for p in parts if p.strip()])
 
 

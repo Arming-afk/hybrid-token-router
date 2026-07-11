@@ -8,8 +8,8 @@ from src.local import LOCAL_CATEGORIES, verify  # noqa: E402
 
 
 def test_default_local_categories_are_the_current_bisect_rung():
-    assert LOCAL_CATEGORIES == {"sentiment", "ner", "summarization", "debug", "codegen"}
-    for kept_remote in ("factual", "math", "logic"):
+    assert LOCAL_CATEGORIES == {"sentiment", "ner", "summarization"}
+    for kept_remote in ("factual", "math", "logic", "debug", "codegen"):
         assert kept_remote not in LOCAL_CATEGORIES
 
 
@@ -39,15 +39,6 @@ def test_summarization_respects_stated_limits():
     assert verify(prompt, "summarization", "First sentence. Second sentence. Third.")[0] is False
     prompt_words = "Summarize in under 5 words: ..."
     assert verify(prompt_words, "summarization", "Far too many words in this answer.")[0] is False
-
-
-def test_sentence_count_ignores_abbreviations_and_initials():
-    prompt = "Summarize in one sentence: ..."
-    abbrev = ("The U.S. transit authority, led by Dr. Lee and J. Smith of Acme Inc., "
-              "approved the plan (e.g. new corridors).")
-    assert verify(prompt, "summarization", abbrev)[0] is True
-    two_real = "The plan was approved. Work begins in September."
-    assert verify(prompt, "summarization", two_real)[0] is False
 
 
 def test_code_answers_must_parse_and_contain_requested_function():
