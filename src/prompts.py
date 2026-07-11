@@ -59,6 +59,14 @@ submission so each result cleanly measures one variable:
   correctness. Caps are now hard budget enforcers (billed = generated, so a tight
   cap bounds worst-case spend), sized ~1.5-2x the instructed length so an obedient
   answer never truncates. Rollback anchor: image 94619a7 (94.7%, 5095).
+- Coder-model rung (2026-07-11, all-out endgame): debug+codegen move to the local
+  path (qwen2.5-coder:3b), so the ONLY categories still billed remotely are
+  factual/math/logic. Their prompts are deliberately NOT cut in the same submission
+  as the local widening — one variable per run, and an accuracy drop must stay
+  attributable to the widening, not a bundled prompt trim. Next remote lever, as a
+  SEPARATE later submission if the widening passes: math/logic → answer-only
+  (~-150, correctness risk on kimi). Factual stays "under 50 words"; do NOT squeeze
+  it below the proven floor (failed the gate at 73.7% twice under 120→60/1-2sent).
 - Moonshot fix (resubmission after run 14's INFRA_ERROR): factual/math/logic tier
   MEDIUM -> CODE (kimi). Community-confirmed intel (docs/eval-results.md, LocalFirst
   section): gemma-4-31b-it has NO serverless support and 404s at grading too, so
