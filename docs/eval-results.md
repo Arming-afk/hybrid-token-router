@@ -238,6 +238,90 @@ run 19-21's fresh-set losses are **not explained by dangerous router misroutes**
 (qwen2.5-coder:3b silently wrong under verifiers, per the run-16/20 lesson) and/or
 genuine remote-model misses on the new phrasings — router.py itself looks solid.
 
+### Phase D: 106-task scale rehearsal (2026-07-11, person3) — debug/codegen locally near-unusable at scale
+
+Built `tests/scale_tasks_100.json` (106 tasks: `tests/load_tasks.json`'s 50 + 56 new,
+spanning all 8 categories at ~13/category, 3 deterministic-solver hits, 1 genuinely
+ambiguous LLM-fallback case, and 5 graduated long summarization passages 500-2500
+chars) and ran it through `scripts/run_local.sh`-equivalent (throttled
+`--cpus=2 --memory=4g`, bogus `FIREWORKS_API_KEY` so every remote call fails fast and
+only the LOCAL* funnel is real signal — the same repro pattern as the Track A/B
+measurements above).
+
+**Blocker found and fixed first: the image would not start at all.** `docker run`
+failed immediately with `exec ./entrypoint.sh: no such file or directory`. Root cause:
+this machine has `core.autocrlf=true` and the repo had no `.gitattributes`, so
+`entrypoint.sh` (and `scripts/run_local.sh`, `scripts/validate_coder_rung.sh`) checked
+out with CRLF line endings locally; `COPY`'d into the Linux image, the shebang becomes
+`#!/bin/sh\r` and `exec` can't resolve it. The git blob itself is LF
+(`git show HEAD:entrypoint.sh` is clean POSIX) so CI-built images are almost certainly
+unaffected — but **any Windows contributor building the image locally hits this**,
+which matters now that `docs/RUNBOOK.md`'s new pre-submission-audit section asks
+people to do exactly that before every submission. Fixed: added `.gitattributes`
+(`* text=auto eol=lf`, explicit `*.sh`/`entrypoint.sh` rules) and stripped CRLF from
+the three scripts on disk. Rebuilt — container starts cleanly.
+
+**With the image actually running, the real finding:** of 106 tasks, only 17 got an
+answer (the rest empty is expected under a bogus key for the 38 factual/math/logic/
+fallback tasks, which never have a local path — that's not a signal). The signal is
+the 65 tasks in `LOCAL_CATEGORIES` (sentiment/ner/summarization/debug/codegen,
+13 each):
+
+| category | LOCAL (success) | LOCAL_FAIL (timeout) | LOCAL_REJECTED | LOCAL_SKIP (never attempted, budget exhausted) |
+|---|---|---|---|---|
+| sentiment | 3 | 3 | 0 | 7 |
+| summarization | 5 | 1 | 0 | 7 |
+| ner | 6 | 0 | 1 | 6 |
+| **debug** | **0** | **5** | 0 | 8 |
+| **codegen** | **0** | **2** | 0 | 11 |
+
+**debug and codegen got zero successful local completions — every attempted call
+(7/7) timed out**, all at elapsed 15.6-16.3s, i.e. just over the 15s base
+`CALL_TIMEOUT`. This is on *short* prompts (`tests/load_tasks.json` L-series, not the
+long summarization set), where sentiment/ner/summarization completed comfortably in
+6-14s. Compare against the Track B measurement above (`scripts/eval_local_code.py`
+isolated: debug avg 4.1s, codegen avg 4.3s) — under full-pipeline scale conditions
+(asyncio concurrency=6, all six workers hammering the API client simultaneously,
+Ollama and the event loop sharing the same 2 vCPUs) debug/codegen generation is
+landing at **3-4x that isolated latency**, right at the timeout edge. sentiment/ner/
+summarization don't show the same blowup, so this looks specific to
+qwen2.5-coder:3b's code-category completions (longer average output = more wall-clock
+per call regardless of prompt length) meeting a timeout formula that only scales with
+*prompt* length (`_timeout_for` = 15s + `SECONDS_PER_KB`×prompt_chars/1024), not
+expected *completion* length.
+
+Also confirms the plan's own predicted failure mode: **LOCAL_SKIP (budget exhausted,
+never even attempted) is the single largest outcome — 39/65 — dwarfing LOCAL_FAIL
+(11) and LOCAL success (14).** At 106 tasks the serialized single-worker local queue
+(one `LOCAL_LOCK`, 2 vCPU box) cannot keep up with `CONCURRENCY=6` tasks arriving
+per wave; most of the queue never gets a turn before `LOCAL_MIN_REMAINING_SECONDS`
+trips. The real judge set is only ~19 tasks (not 106), so the absolute exposure is
+smaller, but this is exactly the mechanism the organizers' "task count may change"
+warning is about, and it reproduces the run-19 starvation class at a larger scale
+despite the run-19 lock-recheck fix (`5841b4a`) already being in place.
+
+Side fix while diagnosing: `LOCAL_SKIP` log lines didn't carry `category` (only
+`task_id`+`note`), even though `category` is already in scope in `try_local` — this
+is exactly the Phase 0 "gotcha" the endgame plan anticipated, and it meant 39/65
+starvation events were unattributable in `scripts/token_report.py`'s funnel table
+until cross-referenced against the task file by hand. Fixed in `src/main.py` (both
+`LOCAL_SKIP` call sites now pass `category=category`); the table above was cross-
+referenced manually against `tests/scale_tasks_100.json` because the log predates
+the fix — future runs get correct attribution for free.
+
+**Decision (per the Phase D gate): document, do not gamble a config change on
+deadline day.** No change to `LOCAL_CATEGORIES`, timeouts, or concurrency made here.
+Flagging as the top open question for whoever picks up the extended window: the
+run-19/21 gate failures were already suspected to be local semantic misses on
+debug/codegen (run-16 lesson: verifiers check format, not meaning); this data adds a
+second, distinct failure mode on the *same two categories* — outright non-completion
+under realistic load, not just wrong-but-plausible answers. Candidate next steps
+(not implemented, need their own offline validation before any submission): raise
+`CALL_TIMEOUT`/`MAX_CALL_TIMEOUT` specifically for code categories, cap `NUM_PREDICT`
+tighter for debug/codegen to shorten generation time, or narrow `LOCAL_CATEGORIES`
+back to the run-17/18-proven `sentiment,ner,summarization` set as the safer anchor if
+the coder-rung's real-condition reliability can't be validated before the freeze.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:

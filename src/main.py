@@ -66,7 +66,7 @@ def _remaining() -> float:
 async def try_local(task_id: str, category: str, prompt: str) -> str:
     """One serialized local attempt; returns "" whenever the remote path should run."""
     if _remaining() < LOCAL_MIN_REMAINING_SECONDS:
-        log("LOCAL_SKIP", task_id=task_id, note="global budget low")
+        log("LOCAL_SKIP", task_id=task_id, category=category, note="global budget low")
         return ""
     async with LOCAL_LOCK:
         # Re-check AFTER acquiring the lock: local generations are serialized, so a
@@ -75,7 +75,7 @@ async def try_local(task_id: str, category: str, prompt: str) -> str:
         # queued past the deadline and returned blank). Bail to remote rather than
         # start a fresh (up to 60s) generation on a budget that already ran out.
         if _remaining() < LOCAL_MIN_REMAINING_SECONDS:
-            log("LOCAL_SKIP", task_id=task_id, note="budget low after lock wait")
+            log("LOCAL_SKIP", task_id=task_id, category=category, note="budget low after lock wait")
             return ""
         started = time.monotonic()
         try:

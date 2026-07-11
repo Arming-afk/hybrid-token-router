@@ -1,0 +1,426 @@
+[
+  {
+    "task_id": "L01",
+    "prompt": "Explain why the sky appears blue during the day."
+  },
+  {
+    "task_id": "L02",
+    "prompt": "What causes ocean tides on Earth?"
+  },
+  {
+    "task_id": "L03",
+    "prompt": "Describe the role of mitochondria in a cell."
+  },
+  {
+    "task_id": "L04",
+    "prompt": "Which planet in the solar system has the strongest winds?"
+  },
+  {
+    "task_id": "L05",
+    "prompt": "Explain the difference between weather and climate."
+  },
+  {
+    "task_id": "L06",
+    "prompt": "What is the capital city of Australia, and why was it chosen over Sydney or Melbourne?"
+  },
+  {
+    "task_id": "L07",
+    "prompt": "Describe how vaccines train the immune system."
+  },
+  {
+    "task_id": "L08",
+    "prompt": "A store sells a jacket for $80 after a 20% discount. Calculate the original price."
+  },
+  {
+    "task_id": "L09",
+    "prompt": "How many minutes are there in 3.5 days?"
+  },
+  {
+    "task_id": "L10",
+    "prompt": "A worker earns $18 per hour and works 37 hours in a week. Calculate the total weekly pay."
+  },
+  {
+    "task_id": "L11",
+    "prompt": "An investment of $5,000 grows at 6% compound interest per year. Calculate its value after 3 years."
+  },
+  {
+    "task_id": "L12",
+    "prompt": "The average of four numbers is 15. Three of them are 12, 18, and 9. Calculate the fourth number."
+  },
+  {
+    "task_id": "L13",
+    "prompt": "A recipe for 4 people needs 300 g of rice. How many grams are needed for 7 people?"
+  },
+  {
+    "task_id": "L14",
+    "prompt": "A car travels 240 km in 3 hours. Calculate its average speed in km per hour."
+  },
+  {
+    "task_id": "L15",
+    "prompt": "Classify the sentiment of this review: 'The battery dies before lunch and support never replied.'"
+  },
+  {
+    "task_id": "L16",
+    "prompt": "Label this feedback as positive, negative, or neutral: 'Delivery was on time and the packaging was immaculate.'"
+  },
+  {
+    "task_id": "L17",
+    "prompt": "Determine whether this tweet is positive or negative: 'Queued for two hours and the ride broke down halfway.'"
+  },
+  {
+    "task_id": "L18",
+    "prompt": "Classify the sentiment and justify briefly: 'The hotel room was spotless, but the street noise kept me up all night.'"
+  },
+  {
+    "task_id": "L19",
+    "prompt": "Is this comment positive, negative, or neutral? 'The update changed the icon color.'"
+  },
+  {
+    "task_id": "L20",
+    "prompt": "Rate the sentiment of this review: 'Absolutely worth every penny, the lens is razor sharp.'"
+  },
+  {
+    "task_id": "L21",
+    "prompt": "Summarize this paragraph in one sentence: The regional rail operator announced that night services on the eastern line will be suspended for eight weeks while crews replace signalling equipment installed in the 1980s, with replacement buses running on the same schedule."
+  },
+  {
+    "task_id": "L22",
+    "prompt": "TL;DR this update: Our mobile app now supports offline mode. Documents edited without a connection sync automatically once you are back online, and conflicts are resolved by keeping both versions side by side for manual review."
+  },
+  {
+    "task_id": "L23",
+    "prompt": "Condense the following announcement into two bullets: The library will extend weekend opening hours starting next month. Members can also reserve study rooms online up to fourteen days in advance, replacing the current paper sign-up sheets."
+  },
+  {
+    "task_id": "L24",
+    "prompt": "Give me the gist of this email: Hi team, the vendor pushed the maintenance window to Saturday night. Expect the reporting dashboard to be read-only from 22:00 to 02:00. No action is needed on our side, but please avoid scheduling exports during that window."
+  },
+  {
+    "task_id": "L25",
+    "prompt": "Shorten this product description to one line: This backpack features a padded laptop sleeve, water-resistant zippers, a hidden passport pocket, breathable shoulder straps, and a lifetime repair warranty."
+  },
+  {
+    "task_id": "L26",
+    "prompt": "Recap the meeting notes below in three bullets: Marketing wants the launch moved up a week. Engineering flagged that the payment flow still lacks error handling. Support asked for a beta FAQ before any public announcement. Budget review was postponed."
+  },
+  {
+    "task_id": "L27",
+    "prompt": "Extract all named entities (person, organization, location, date) from: On 3 March, Dr. Lena Fischer of Helios Clinic spoke in Munich."
+  },
+  {
+    "task_id": "L28",
+    "prompt": "Identify the people and organizations in: Kenji Watanabe joined Vertex Robotics after leaving Osaka University."
+  },
+  {
+    "task_id": "L29",
+    "prompt": "List every location and date mentioned in: The summit moved from Geneva to Vienna on 12 January 2026."
+  },
+  {
+    "task_id": "L30",
+    "prompt": "Tag the named entities in: Maria Duarte, chief executive of Andes Copper, visited Santiago last Tuesday."
+  },
+  {
+    "task_id": "L31",
+    "prompt": "Find all persons and companies in: Analysts at Borrell & Sons praised the merger with Tidewater Group announced by chairwoman Ingrid Holm."
+  },
+  {
+    "task_id": "L32",
+    "prompt": "Pull out the entities (PERSON, ORG, LOCATION) from: Officer Dana Reyes escorted the delegation through Terminal 4 of Heathrow Airport."
+  },
+  {
+    "task_id": "L33",
+    "prompt": "This function is supposed to compute a factorial but crashes. Fix it:\ndef fact(n):\n    return n * fact(n - 1)"
+  },
+  {
+    "task_id": "L34",
+    "prompt": "Fix the bug in this code:\nfunction sum(arr) {\n  let total = 0;\n  for (let i = 0; i <= arr.length; i++) total += arr[i];\n  return total;\n}"
+  },
+  {
+    "task_id": "L35",
+    "prompt": "My loop prints nothing, it's broken:\nfor i in range(10, 0):\n    print(i)"
+  },
+  {
+    "task_id": "L36",
+    "prompt": "This query returns duplicates and is wrong. Fix it:\n```sql\nSELECT o.id, c.name FROM orders o JOIN contacts c ON c.company = o.company;\n```"
+  },
+  {
+    "task_id": "L37",
+    "prompt": "The following method throws IndexError and doesn't work. Debug it:\ndef last(xs):\n    return xs[len(xs)]"
+  },
+  {
+    "task_id": "L38",
+    "prompt": "Why does this crash? Fix:\nconst n = items.map(x => x.value);\nconsole.log(n.total());"
+  },
+  {
+    "task_id": "L39",
+    "prompt": "Write a Python function is_palindrome(s) that ignores case and punctuation."
+  },
+  {
+    "task_id": "L40",
+    "prompt": "Implement a JavaScript function debounce(fn, ms) that delays calls until ms milliseconds of silence."
+  },
+  {
+    "task_id": "L41",
+    "prompt": "Create a Python class Stack with push, pop, and peek methods."
+  },
+  {
+    "task_id": "L42",
+    "prompt": "Write a function that merges two sorted lists into one sorted list in Python."
+  },
+  {
+    "task_id": "L43",
+    "prompt": "Generate a short Python function to validate email addresses with a regular expression."
+  },
+  {
+    "task_id": "L44",
+    "prompt": "Build a Python function fizzbuzz(n) that produces the classic FizzBuzz sequence as a list."
+  },
+  {
+    "task_id": "L45",
+    "prompt": "Three friends named Ana, Bea, and Cal each own a different pet: a cat, a dog, or a fish. Ana is allergic to fur. Cal's pet cannot swim. Who owns which pet?"
+  },
+  {
+    "task_id": "L46",
+    "prompt": "On an island of knights and knaves, Zed says 'We are both knaves.' What are Zed and his companion?"
+  },
+  {
+    "task_id": "L47",
+    "prompt": "Runners named Ivy, Jo, Kim, and Lee finished a race. Using these clues, determine the order: Ivy beat Jo. Lee finished last. Kim was not first."
+  },
+  {
+    "task_id": "L48",
+    "prompt": "Ali, Ben, and Cara sit in a row of three seats. Ali is not next to Ben. Cara is on the right end. Determine the seating arrangement."
+  },
+  {
+    "task_id": "L49",
+    "prompt": "All roses in this garden are red. Some flowers in this garden are not red. Can we conclude that some flowers in this garden are not roses?"
+  },
+  {
+    "task_id": "L50",
+    "prompt": "Four coworkers each drink exactly one beverage among tea, coffee, juice, and water. Using the clues, decide who drinks tea: Pia avoids caffeine. Quinn drinks juice. Rae drinks water."
+  },
+  {
+    "task_id": "S_F1",
+    "prompt": "What is the function of the human liver?"
+  },
+  {
+    "task_id": "S_F2",
+    "prompt": "Who painted the Mona Lisa?"
+  },
+  {
+    "task_id": "S_F3",
+    "prompt": "What is the capital of Australia?"
+  },
+  {
+    "task_id": "S_F4",
+    "prompt": "How do bees communicate the location of flowers to each other?"
+  },
+  {
+    "task_id": "S_M1",
+    "prompt": "A train travels 240 km in 3 hours. What is its average speed in km/h?"
+  },
+  {
+    "task_id": "S_M2",
+    "prompt": "If a shirt costs $50 and is discounted by 20%, what is the sale price?"
+  },
+  {
+    "task_id": "S_M3",
+    "prompt": "Two numbers multiply to 48 and add to 14. What are the two numbers?"
+  },
+  {
+    "task_id": "S_M4",
+    "prompt": "What is 847 x 23?"
+  },
+  {
+    "task_id": "S_M5",
+    "prompt": "Calculate 18% of 350."
+  },
+  {
+    "task_id": "S_M6",
+    "prompt": "What is the square root of 169?"
+  },
+  {
+    "task_id": "S_N1",
+    "prompt": "Extract all named entities from this text: Sundar Pichai visited Tokyo on March 3rd to meet with SoftBank executives."
+  },
+  {
+    "task_id": "S_N2",
+    "prompt": "Identify the people and organizations mentioned in this passage: Angela Merkel met with representatives from Siemens in Munich."
+  },
+  {
+    "task_id": "S_N3",
+    "prompt": "List all locations and dates mentioned in this news snippet: Wildfires spread near Athens on August 14th."
+  },
+  {
+    "task_id": "S_N4",
+    "prompt": "Find every person and company named in this paragraph: Elon Musk announced a partnership with NVIDIA at the conference."
+  },
+  {
+    "task_id": "S_N5",
+    "prompt": "Tag the named entities in this sentence: Jeff Bezos founded Amazon in Seattle in 1994."
+  },
+  {
+    "task_id": "S_N6",
+    "prompt": "Pull out all organizations mentioned in this text: The United Nations and UNICEF issued a joint statement."
+  },
+  {
+    "task_id": "S_S1",
+    "prompt": "Classify the sentiment of this review as positive, negative, or neutral: 'The staff were incredibly rude and my order was wrong.'"
+  },
+  {
+    "task_id": "S_S2",
+    "prompt": "Is the tone of this message positive or negative? 'Thanks so much, this made my whole week!'"
+  },
+  {
+    "task_id": "S_S3",
+    "prompt": "Determine the sentiment of this comment: 'It's fine, does what it says on the box.'"
+  },
+  {
+    "task_id": "S_S4",
+    "prompt": "Would you say this feedback is positive or negative: 'Terrible experience, will never shop here again.'"
+  },
+  {
+    "task_id": "S_S5",
+    "prompt": "Label this tweet as positive, negative, or neutral: 'Just okay I guess, nothing special.'"
+  },
+  {
+    "task_id": "S_S6",
+    "prompt": "How does the customer feel about the product based on this review? 'Absolutely exceeded my expectations, love it!'"
+  },
+  {
+    "task_id": "S_S7",
+    "prompt": "Classify the sentiment: 'Waited two hours and nobody even apologized.'"
+  },
+  {
+    "task_id": "S_SUM1",
+    "prompt": "Summarize in one sentence: The company reported record profits this quarter due to strong overseas sales."
+  },
+  {
+    "task_id": "S_SUM2",
+    "prompt": "TL;DR of this: The bridge will be closed for repairs starting Monday and reopening in three weeks."
+  },
+  {
+    "task_id": "S_SUM3",
+    "prompt": "Summarize the passage above in 40 words or fewer.\n\nRenewable energy sources such as solar and wind now account for a growing share of global electricity generation. Falling costs for photovoltaic panels and turbine components have made these technologies competitive with fossil fuels in many markets. Grid operators are increasingly investing in battery storage to smooth out the intermittency of these sources, and several countries have announced plans to phase out coal power entirely within the next two decades."
+  },
+  {
+    "task_id": "S_SUM4",
+    "prompt": "Summarize this in exactly 2 sentences.\n\nThe signing of the treaty in 1648 brought an end to decades of conflict across the continent, redrawing borders and establishing a new framework for state sovereignty that would influence international relations for centuries. Delegates from dozens of territories negotiated for years before reaching a settlement, and the resulting agreements recognized the independence of several states while restoring lands seized during the fighting. Historians regard the outcome as a turning point that shifted power away from religious authorities and toward secular states, establishing principles of non-interference that persist in diplomacy today. The negotiations themselves were notable for including representatives from smaller territories alongside major powers, an unusual practice for the era."
+  },
+  {
+    "task_id": "S_SUM5",
+    "prompt": "Provide a summary of the passage above.\n\nResearchers tracked sleep patterns in 400 adults over six months using wearable sensors, comparing those who maintained consistent bedtimes against those with irregular schedules. Participants with consistent sleep timing showed measurably better scores on memory and attention tests, even when total sleep duration was similar between groups. The effect was most pronounced in participants over 50, suggesting that sleep regularity may become more important for cognitive performance with age. The study controlled for caffeine intake, exercise habits, and screen time before bed, and the authors note that while the correlation was strong, the design cannot establish causation. Follow-up work is planned using a randomized intervention where one group is coached toward consistent sleep timing to see whether cognitive scores improve as a result. Funding for the study came from a public health research grant, and the full dataset will be released for independent replication next year."
+  },
+  {
+    "task_id": "S_SUM6",
+    "prompt": "Summarize this in 3 bullet points.\n\nQuarterly revenue rose 12 percent year over year, driven primarily by growth in the subscription segment, which now accounts for more than half of total sales. Hardware revenue declined slightly as the company worked through excess inventory from the prior launch cycle, though management expects this to normalize by the next quarter. Operating expenses increased due to continued investment in the international sales team, which grew headcount by nearly a third across the year. Gross margin held steady despite input cost pressure, credited to supplier renegotiations completed earlier in the year. The board approved an expanded share buyback program and raised full-year revenue guidance modestly, citing strong renewal rates among enterprise customers. Management flagged foreign exchange headwinds as the primary risk to the updated guidance, given the company's growing exposure to European and Asian markets, and said it would provide further detail on hedging strategy on the next earnings call."
+  },
+  {
+    "task_id": "S_SUM7",
+    "prompt": "Give a concise summary of the text above.\n\nCoral reefs support an estimated quarter of all marine species despite covering less than one percent of the ocean floor, making them one of the most biodiverse ecosystems on the planet. Rising ocean temperatures have triggered increasingly frequent bleaching events, in which corals expel the symbiotic algae that provide both their color and most of their energy, leaving them vulnerable to starvation and disease. Some reef systems have shown a limited capacity to recover between bleaching events, particularly where local stressors like pollution and overfishing are also reduced, but the frequency of marine heatwaves in recent years has outpaced many reefs' ability to regenerate. Conservation efforts now increasingly focus on identifying and protecting naturally heat-tolerant coral populations, which researchers hope could serve as a genetic reservoir for restoration efforts elsewhere. Selective breeding and assisted gene flow programs are underway in several countries, though scientists caution these interventions are not a substitute for reducing the greenhouse gas emissions driving ocean warming in the first place. International funding for reef conservation has grown in recent years but remains far short of what marine biologists say is needed to meaningfully slow the loss of these ecosystems worldwide."
+  },
+  {
+    "task_id": "S_C1",
+    "prompt": "Write a Python function that checks if a number is prime."
+  },
+  {
+    "task_id": "S_C2",
+    "prompt": "Create a function that reverses the words in a sentence."
+  },
+  {
+    "task_id": "S_C3",
+    "prompt": "Implement a function to compute the factorial of a number recursively."
+  },
+  {
+    "task_id": "S_C4",
+    "prompt": "Write a JavaScript function that debounces another function call."
+  },
+  {
+    "task_id": "S_C5",
+    "prompt": "Build a function that merges two dictionaries, with the second overriding the first."
+  },
+  {
+    "task_id": "S_C6",
+    "prompt": "Generate a Python class representing a simple stack with push and pop methods."
+  },
+  {
+    "task_id": "S_C7",
+    "prompt": "Write a function that converts a list of tuples into a dictionary."
+  },
+  {
+    "task_id": "S_D1",
+    "prompt": "This function has a bug and returns the wrong total. Fix it:\ndef total(nums):\n    return sum(nums) + 1"
+  },
+  {
+    "task_id": "S_D2",
+    "prompt": "My code throws a TypeError when I run it. What's wrong?\ndef greet(name):\n    return 'Hello ' + name + 5"
+  },
+  {
+    "task_id": "S_D3",
+    "prompt": "This function is supposed to check for even numbers but always returns False. Debug it:\ndef is_even(n):\n    return n % 2 == 1"
+  },
+  {
+    "task_id": "S_D4",
+    "prompt": "The following loop never terminates. Fix the bug:\ni = 10\nwhile i > 0:\n    print(i)\n    i += 1"
+  },
+  {
+    "task_id": "S_D5",
+    "prompt": "Find the bug in this code that should return the max of a list but doesn't:\ndef find_max(xs):\n    m = 0\n    for x in xs:\n        if x > m:\n            m = x\n    return m"
+  },
+  {
+    "task_id": "S_D6",
+    "prompt": "This code should reverse a string but returns the same string. What's wrong?\ndef reverse(s):\n    return s[0:]"
+  },
+  {
+    "task_id": "S_D7",
+    "prompt": "This function crashes on an empty list. Fix it:\ndef average(xs):\n    return sum(xs) / len(xs)"
+  },
+  {
+    "task_id": "S_D8",
+    "prompt": "The following code is supposed to filter out negative numbers but keeps them. Debug it:\ndef positives(xs):\n    return [x for x in xs if x < 0]"
+  },
+  {
+    "task_id": "S_L1",
+    "prompt": "Three friends, Ana, Ben, and Cleo, each have a different pet: a cat, a dog, and a fish. Ana doesn't own the fish, and Ben owns the dog. What pet does Cleo own?"
+  },
+  {
+    "task_id": "S_L2",
+    "prompt": "A says 'I am lying.' Is A's statement true or false?"
+  },
+  {
+    "task_id": "S_L3",
+    "prompt": "All robots in this factory require power, and this machine requires no power. Is this machine a robot?"
+  },
+  {
+    "task_id": "S_L4",
+    "prompt": "Five people are seated in a row. Dana sits at one end, and Eli sits immediately to Dana's right. If Fay sits at the other end, who sits in the middle three seats?"
+  },
+  {
+    "task_id": "S_L5",
+    "prompt": "Using the clues below, determine who arrived first: Kim arrived before Lee, and Lee arrived before Mo."
+  },
+  {
+    "task_id": "S_L6",
+    "prompt": "In a group of four suspects, the one who is not the manager stole the file, and the youngest is the manager. If the oldest is not the youngest, who stole the file?"
+  },
+  {
+    "task_id": "S_L7",
+    "prompt": "A jar contains only red and blue marbles. If it's true that no marble is both red and blue, and this marble is red, can it also be blue?"
+  },
+  {
+    "task_id": "S_L8",
+    "prompt": "Four students are ranked 1st through 4th with no ties. The student ranked 2nd scored lower than the student ranked 1st but higher than the student ranked 3rd. Who is ranked last relative to the others in the top three?"
+  },
+  {
+    "task_id": "S_L9",
+    "prompt": "Each of three cards has a different symbol: star, circle, or square. The star card is not first, and the circle card is last. What symbol is the first card?"
+  },
+  {
+    "task_id": "S_AMB1",
+    "prompt": "Each person has a different number of coins; using 2 clues, calculate who has the most."
+  },
+  {
+    "task_id": "S_AMB2",
+    "prompt": "Three players have scores that differ by 2 points; use the ranking below to calculate who is ahead: Ana finished before Ben."
+  }
+]
