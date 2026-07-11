@@ -7,13 +7,17 @@
 
 (ollama serve > /tmp/ollama.log 2>&1 &) || true
 
+# Warm the SAME model main.py will call (LOCAL_MODEL, default matches the Dockerfile
+# bake). Warming the wrong model leaves the first real task to pay the ~57s cold
+# start while holding the serialized local lock — the run-19 starvation trigger.
+LOCAL_MODEL="${LOCAL_MODEL:-qwen2.5-coder:3b}"
 (
   i=0
   while [ $i -lt 30 ]; do
     if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
       # one tiny generation forces the ~2GB model load now, not on task one
       curl -s http://localhost:11434/api/generate \
-        -d '{"model":"qwen2.5:3b","prompt":"hi","stream":false,"options":{"num_predict":1}}' \
+        -d "{\"model\":\"${LOCAL_MODEL}\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":\"30m\",\"options\":{\"num_predict\":1}}" \
         > /dev/null 2>&1 || true
       break
     fi

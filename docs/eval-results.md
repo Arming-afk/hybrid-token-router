@@ -48,6 +48,15 @@ via OpenRouter — see `.env.eval`).
 | 7 | LocalFirst-4 | jae | 3,753 | 100% | Jul 10 16:13 |
 | 8 | Divine v15 | Divine | 3,779 | 84.2% | Jul 10 19:08 |
 
+**Update (2026-07-11 ~01:50, user-reported):** yassai has dropped again —
+**1,292 tokens @ 94.7%** (was 2,228 @ 100%). Their public writeup (written at their
+4,826 cloud-only stage) closes with "further reduction needs a reliable zero-token
+local offload" — this drop is that offload landing, and they visibly sold one judge
+task (100% → 18/19) for it. Implication: the podium zone is now ~1.3–1.8k,
+unreachable for our architecture today; the Track A/B ceiling (~2.5–3.8k) fights
+for top 5. Plan unchanged — the final re-score on fresh prompts favors robust
+architectures over margins tuned to the current 19-task set.
+
 What this snapshot proves:
 - **High accuracy at 1,8–2,2k tokens is achievable** (Metis 94.7%, yassai 100%).
   The "cheap = sold accuracy" model is falsified; the top entries must be running
@@ -61,6 +70,107 @@ What this snapshot proves:
   which run 16 poisoned for plain qwen2.5:3b — but a coder-tuned sibling was
   never tested and can be evaluated OFFLINE against tests/eval/{debug,codegen}.json
   before risking a submission.
+
+### In flight (2026-07-11, person2): offline eval tooling for the next two levers
+
+Two runnable-by-anyone scripts are now in `scripts/` so the blocked measurements can
+run on whichever machine first gets the models downloaded (the throttled
+`docker run --cpus=2 -m 4g ... ollama/ollama` setup is in each script's docstring):
+
+- `scripts/eval_local_code.py <model>` — the coder-model question: runs
+  debug/codegen eval items through the PRODUCTION local pipeline
+  (local.generate + local.verify), then **executes the generated code against
+  per-item assertions** — the semantic check whose absence sank run 16. Meant for
+  `qwen2.5-coder:3b` (never tested; the only path below 3k). ≥9/10 PASS per
+  category = worth a scored run; the SEMANTIC_MISS count is the widen/don't-widen
+  signal.
+- `scripts/eval_local_summarization.py` — the −21-anomaly repro: true local latency
+  (timeout raised to 120s) on short eval passages + synthesized long ones vs the
+  15s production cap; the first call also measures the cold-start model load.
+
+Also identified by code reading (no measurement yet): the entrypoint's warmup races
+the agent — local-eligible tasks arriving in the first ~25s can LOCAL_FAIL to paid
+remote while the model is still loading. Candidate fix: gate the first local
+attempts on warmup completion (wait, don't fail open) — cheap, and part of the
+"cold-start fix" in the ceiling estimate above. Status on person2's machine: Ollama
+image download cancelled midway (bandwidth); scripts are ready to fire elsewhere.
+
+### Track A measurement (2026-07-11 ~04:20, person3 machine, ollama pinned to 2 cores)
+
+`scripts/eval_local_summarization.py` on native Windows ollama (qwen2.5:3b), all
+ollama processes affinity-pinned to 2 logical cores to mimic the grading box
+(caveat: full RAM — the 4GB cap is NOT reproduced; docker pull of the image kept
+failing on this connection, weights fetched via resumable curl instead):
+
+| item | latency | verdict |
+|---|---|---|
+| short [0] (first call) | **57.0s** | model load under contention — would LOCAL_FAIL at the old 25s cap |
+| short [1] | 3.0s | genuine verifier reject: 12 words vs a 10-word limit (correct escalation) |
+| short [2]–[3] | 3.1s | pass |
+| long 350 / 520 / 870 words | 3.6 / 4.4 / 5.2s | pass — all far inside the 15s cap |
+
+Re-timing item [0] warm: **3.4s** (load_duration 0.6s) — the 57s was pure model
+load, not compute. Conclusions:
+
+1. **The long-passage-timeout hypothesis for the −21 anomaly is DISPROVED** on
+   CPU grounds: 870-word prompt-eval takes ~5s at 2 cores, 3× inside the cap.
+2. **Cold-start is the confirmed real risk**: a first call under load took 57s;
+   the old FIRST_CALL_TIMEOUT=25 loses that race → raised to 60s.
+3. The `_sentence_count` verifier over-counts on abbreviations (U.S., Dr., e.g.,
+   single-letter initials) — confirmed offline, rejects correct one-sentence
+   answers → abbreviation masking added.
+4. Remaining candidate causes for −21, not separable without the real box:
+   verifier rejections in prod (abbrev + genuine word-limit misses), 4GB RAM
+   pressure (untestable natively; SUMMARIZATION_CALL_TIMEOUT=45s added as free
+   insurance), or simply few/short summarization tasks in the judge set.
+
+Rung 3 = these three fixes, LOCAL_CATEGORIES unchanged (sentiment,ner,summarization).
+All fail-open: zero accuracy risk vs run 18's 100%; token saving materializes only
+if prod summarization was bleeding to remote via causes 2–3.
+
+### Track B measurement (2026-07-11 ~06:30): qwen2.5-coder:3b carries the code categories
+
+`scripts/eval_local_code.py qwen2.5-coder:3b` (native ollama pinned to 2 cores,
+generated code EXECUTED against per-item assertions):
+
+- **debug: 10/10 PASS**, 0 semantic misses, latency avg 4.1s / max 8.1s
+- **codegen: 9/10 PASS**, 1 semantic miss (average-ignoring-None item: generated
+  code divides by zero on an empty list), latency avg 4.3s
+- 19/20 total ≥ the 14/15 gate → run 16's "code categories are poison" verdict is
+  confirmed to be a PLAIN-qwen2.5:3b property, not a 3B-local property.
+
+Single-model comparison on the easy categories (both models, same eval sets,
+manual re-judge of scorer artifacts): sentiment base 9/10 vs coder 8/10 (the one
+extra flub is a contradictory label+justification); ner ≈7/10 BOTH (different
+miss profiles; the automated scorer's comma-split values understated both);
+summarization equal by eyeball. **Verdict: swap to the coder model outright** —
+4GB RAM cannot hold two 3B models and a swap costs 10-20s serialized.
+
+**Rung 4** (this commit): LOCAL_MODEL=qwen2.5-coder:3b, LOCAL_CATEGORIES=
+sentiment,ner,summarization,debug,codegen. factual/math/logic stay on kimi.
+Validated end-to-end against the real local sidecar with remote stubbed dead:
+all five categories answered locally through the production pipeline (the
+summarization answer contained "U.S." and passed the one-sentence verifier —
+the rung-3 abbrev fix live). Expected landing ~3.0–3.5k if the code categories
+hold on the judge set; risk budget is run 18's +3-task headroom above the gate.
+
+### Coder-rung validation (2026-07-11 ~12:40, person3 machine — GO)
+
+`validate_coder_rung.sh` stages, run against native Windows ollama pinned to 2
+cores (docker unusable on this connection — stage 4's `--network=none` audit
+SKIPPED; risk accepted since the entrypoint/network shape is unchanged from
+graded images):
+
+1. Offline gate: 63 pytest + router 187/187 — green.
+2. Semantic code eval on the CURRENT code (post-0f9c19a): **debug 10/10,
+   codegen 9/10** (same single ZeroDivision miss as the morning run) — GO.
+3. Full-agent rehearsal with the image's exact env
+   (`LOCAL_CATEGORIES=sentiment,ner,summarization,debug,codegen`,
+   `LOCAL_MODEL=qwen2.5-coder:3b`, remote dead): all five categories answered
+   locally (debug 4.1s, codegen 4.3s), all task_ids present, 23.6s total.
+
+`6e4fa3a` is CI-built, manifest 200. Submission gated ONLY on run 20
+(`7bb50c4` re-save) confirming the judge set didn't shift.
 
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
@@ -110,6 +220,9 @@ The harness gives one number per submission — treat each run as one eval data 
 | 16 | `e9838d0` | **Local-first architecture**: Ollama + qwen2.5:3b in-image; 5 categories local behind zero-token verifiers; factual/math/logic stay on kimi | **78.9%** (15/19) | gate FAILED — ~2-3 silent local wrong answers slipped past the verifiers |
 | 17 | `263dd54` | Local narrowed to **sentiment,ner** only (the shortest-output, most-verifiable categories); summarization/debug/codegen back to the proven remote path | **89.5%** (17/19) | **gate PASSED, 4,199 tokens — new best token count; new endgame anchor** |
 | 18 | `7bb50c4` | Ladder rung 2: local widened to **sentiment,ner,summarization** (its word/sentence-limit verifiers already exist) | **100%** (19/19) | **gate PASSED, 4,178 tokens — best on both axes, first 100%; new endgame anchor** — but only −21 vs run 17: summarization likely fell back to remote (see lessons) |
+| 19 | `0c92360` | Rung 3: cold-start 60s + abbrev-safe sentence counter + 45s summarization cap (all believed fail-open) | **73.7%** (14/19) | **gate FAILED — −5 tasks vs run 18, far outside ±1 noise.** Two live hypotheses: (A) longer local timeouts starve the pipeline on the box (serialized lock + semaphore interaction) — hard to make account for −5; (B) the judge set was refreshed on final day (organizers pre-announced fresh prompts), invalidating run 18 as a baseline. Deciding experiment: re-save `7bb50c4` (bit-identical to run 18's 19/19) — if it also drops, it's (B). |
+| 21 | `6e4fa3a` | ALL-IN coder rung on the NEW judge set: qwen2.5-coder:3b, 5 cats local, starvation fix, adaptive summarization timeout, wider deterministic solver | **78.9%** (15/19) | gate FAILED — but **+1 vs runs 19/20** (within ±1 noise): widening local on the coder model did NOT hurt, weakening the local-is-poison theory. ~4 losses persist across radically different configs → suspicion shifts to remote/router quality on the fresh prompts. Gate bracket (78.9%, 84.2%] re-confirmed on the new set. Next: `de9bbf4` (zero local) as the last clean diagnostic. |
+| 20 | `7bb50c4` (re-saved) | bisect: bit-identical to run 18's 100% | **73.7%** (14/19) | **BISECT VERDICT: the judge set CHANGED (fresh prompts, still 19 tasks).** Same bits, 100% → 73.7%; runs 19 and 20 score identically with different code, so the cause is the prompts, NOT rung 3 and NOT lock starvation (at 19 tasks under 15s caps the local queue tops out ~2-3 min, nowhere near the deadline — 5841b4a stays as good hygiene but wasn't the mechanism). Prime suspect for the −5: silent local wrong answers from qwen2.5:3b on the new phrasings (run-16 class — verifiers pass format, not semantics), plus possibly 1-2 remote misses. Consequence: **every pre-run-19 accuracy number is stale; we hold NO gate-passing entry on the live set; local coverage is now the thing under suspicion.** |
 
 Run 18 lessons (2026-07-10):
 - **First 100% (19/19), 4,178 tokens — new endgame anchor `7bb50c4`.**

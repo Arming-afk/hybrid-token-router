@@ -208,11 +208,98 @@ def classify(prompt: str) -> str | None:
 # trigger it and flow through normal routing untouched.
 _ARITH_LEAD = re.compile(r"^(?:what\s+is|what'?s|calculate|compute|evaluate|solve)\b[: ]*", re.I)
 _PERCENT_OF = re.compile(r"^([\d,]+(?:\.\d+)?)\s*(?:%|percent)\s+of\s+([\d,]+(?:\.\d+)?)$", re.I)
+
+_NUM = r"([\d,]+(?:\.\d+)?)"
+# Anchored full-string patterns: each matches ONLY a pure-calculation phrasing and
+# computes directly, so no narrative residue reaches _eval_arith. Order matters only
+# in that each is tried on the full lead-stripped text; a word problem matches none.
+_SQRT = re.compile(rf"^(?:the\s+)?square\s+root\s+of\s+{_NUM}$", re.I)
+_SUM_OF = re.compile(rf"^(?:the\s+)?sum\s+of\s+{_NUM}\s+and\s+{_NUM}$", re.I)
+_PRODUCT_OF = re.compile(rf"^(?:the\s+)?product\s+of\s+{_NUM}\s+and\s+{_NUM}$", re.I)
+_DIFFERENCE_OF = re.compile(rf"^(?:the\s+)?difference\s+between\s+{_NUM}\s+and\s+{_NUM}$", re.I)
+_ADD = re.compile(rf"^add\s+{_NUM}\s+(?:and|to)\s+{_NUM}$", re.I)
+_SUBTRACT_FROM = re.compile(rf"^subtract\s+{_NUM}\s+from\s+{_NUM}$", re.I)  # B - A
+_PERCENT_OFF = re.compile(rf"^{_NUM}\s*(?:%|percent)\s+off\s+(?:of\s+)?{_NUM}$", re.I)
+_PERCENT_CHANGE = re.compile(
+    rf"^(increase|decrease)\s+{_NUM}\s+by\s+{_NUM}\s*(?:%|percent)$", re.I)
+_MOD = re.compile(rf"^{_NUM}\s+mod(?:ulo|ulus)?\s+{_NUM}$", re.I)
+_REMAINDER = re.compile(
+    rf"^(?:the\s+)?remainder\s+(?:when\s+)?{_NUM}\s+is\s+divided\s+by\s+{_NUM}$", re.I)
+_HALF_OF = re.compile(rf"^(?:one\s+)?half\s+of\s+{_NUM}$", re.I)
+_FRACTION_OF = re.compile(rf"^(?:a\s+)?(third|quarter|fifth|tenth)\s+of\s+{_NUM}$", re.I)
+_FRACTIONS = {"third": 1 / 3, "quarter": 0.25, "fifth": 0.2, "tenth": 0.1}
+
+# Word/symbol power operators: substituted before the charset gate. 'squared'/'cubed'
+# expand to '** 2'/'** 3'; '^' and 'to the power of' become '**'. Non-numeric residue
+# still fails the charset gate, so "the power struggle" never reaches the evaluator.
+_POWER_OPS = [
+    ("to the power of", "**"), ("squared", "** 2"), ("cubed", "** 3"), ("^", "**"),
+]
 _WORD_OPS = [
     ("multiplied by", "*"), ("divided by", "/"), ("times", "*"),
     ("plus", "+"), ("minus", "-"), (" x ", " * "), ("×", "*"), ("÷", "/"),
 ]
 _ARITH_CHARSET = re.compile(r"^[\d\s+\-*/.(),]+$")
+
+# Hard bounds so no crafted input can hang the process on a huge exponentiation.
+_MAX_ABS_EXPONENT = 12
+_MAX_ABS_BASE = 10 ** 6
+
+
+def _num(s: str) -> float:
+    return float(s.replace(",", ""))
+
+
+def _isqrt_or_none(n: float) -> float | None:
+    if n < 0 or not float(n).is_integer():
+        return None
+    root = int(round(n ** 0.5))
+    for candidate in (root - 1, root, root + 1):
+        if candidate >= 0 and candidate * candidate == int(n):
+            return float(candidate)
+    return None
+
+
+def _solve_named(text: str) -> str | None:
+    """Anchored named-operation patterns. Returns a formatted answer or None."""
+    m = _SQRT.match(text)
+    if m:
+        root = _isqrt_or_none(_num(m.group(1)))
+        return None if root is None else f"Answer: {_format_number(root)}"
+    m = _SUM_OF.match(text) or _ADD.match(text)
+    if m:
+        return f"Answer: {_format_number(_num(m.group(1)) + _num(m.group(2)))}"
+    m = _PRODUCT_OF.match(text)
+    if m:
+        return f"Answer: {_format_number(_num(m.group(1)) * _num(m.group(2)))}"
+    m = _DIFFERENCE_OF.match(text)
+    if m:
+        return f"Answer: {_format_number(abs(_num(m.group(1)) - _num(m.group(2))))}"
+    m = _SUBTRACT_FROM.match(text)
+    if m:  # 'subtract A from B' = B - A
+        return f"Answer: {_format_number(_num(m.group(2)) - _num(m.group(1)))}"
+    m = _PERCENT_OFF.match(text)
+    if m:
+        base = _num(m.group(2))
+        return f"Answer: {_format_number(base * (1 - _num(m.group(1)) / 100.0))}"
+    m = _PERCENT_CHANGE.match(text)
+    if m:
+        base, pct = _num(m.group(2)), _num(m.group(3))
+        sign = 1 if m.group(1).lower() == "increase" else -1
+        return f"Answer: {_format_number(base * (1 + sign * pct / 100.0))}"
+    m = _MOD.match(text) or _REMAINDER.match(text)
+    if m:
+        b = _num(m.group(2))
+        if b == 0:
+            return None
+        return f"Answer: {_format_number(_num(m.group(1)) % b)}"
+    m = _HALF_OF.match(text)
+    if m:
+        return f"Answer: {_format_number(_num(m.group(1)) * 0.5)}"
+    m = _FRACTION_OF.match(text)
+    if m:
+        return f"Answer: {_format_number(_num(m.group(2)) * _FRACTIONS[m.group(1).lower()])}"
+    return None
 
 
 def _eval_arith(expr: str) -> float | None:
@@ -227,7 +314,8 @@ def _eval_arith(expr: str) -> float | None:
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             value = walk(node.operand)
             return value if isinstance(node.op, ast.UAdd) else -value
-        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div)):
+        if isinstance(node, ast.BinOp) and isinstance(
+                node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)):
             left, right = walk(node.left), walk(node.right)
             if isinstance(node.op, ast.Add):
                 return left + right
@@ -235,6 +323,11 @@ def _eval_arith(expr: str) -> float | None:
                 return left - right
             if isinstance(node.op, ast.Mult):
                 return left * right
+            if isinstance(node.op, ast.Pow):
+                # Bound both operands so no input can hang on a huge exponentiation.
+                if abs(right) > _MAX_ABS_EXPONENT or abs(left) > _MAX_ABS_BASE:
+                    raise ValueError("exponent out of bounds")
+                return left ** right
             if right == 0:
                 raise ZeroDivisionError
             return left / right
@@ -261,6 +354,14 @@ def deterministic_math_answer(prompt: str) -> str | None:
         pct = float(percent.group(1).replace(",", ""))
         base = float(percent.group(2).replace(",", ""))
         return f"Answer: {_format_number(base * pct / 100.0)}"
+    # Anchored named operations (sum of, subtract A from B, square root, mod, ...):
+    # these match whole-string phrasings a narrative prompt cannot, and never leave
+    # residue for the evaluator.
+    named = _solve_named(text)
+    if named is not None:
+        return named
+    for word, symbol in _POWER_OPS:
+        text = text.replace(word, symbol)
     for word, symbol in _WORD_OPS:
         text = text.replace(word, symbol)
     if not _ARITH_CHARSET.match(text):
