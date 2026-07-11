@@ -172,6 +172,72 @@ graded images):
 `6e4fa3a` is CI-built, manifest 200. Submission gated ONLY on run 20
 (`7bb50c4` re-save) confirming the judge set didn't shift.
 
+### Phase B: router audit on fresh wording (2026-07-11 ~13:30, person3) — no DANGEROUS-FP found
+
+Built per `docs/ENDGAME-PLAN.md` Phase B, prompted by run 21's open question ("suspicion
+shifts to remote/router quality on the fresh prompts"). New tools:
+
+- `scripts/router_audit.py` — per-category accuracy, misroute confusion matrix, a
+  DANGEROUS-FP/SAFE/OTHER danger partition (DANGEROUS-FP = misroute into a
+  narrow-format category: sentiment/ner/summarization/debug/codegen), and the
+  deterministic-solver false-positive cross-check (also re-validates Phase C:
+  the solver must never fire on a non-math prompt).
+- `tests/router_cases_fresh.json` — 80 cases (10/category), phrasings not lifted
+  from `router_cases.json`: indirect requests ("could you whip up...", "I need a
+  script that..."), colloquial sentiment pairs ("supportive or critical" instead
+  of "positive/negative"), and keyword-free summarization/NER asks ("give me the
+  highlights of...", "who shows up in this paragraph...").
+
+**Results:**
+
+| file | decided-accuracy | fallback | DANGEROUS-FP | SAFE | OTHER |
+|---|---|---|---|---|---|
+| `router_cases.json` (187, dev) | 100.0% | 0% | 0 | 0 | 0 |
+| `router_cases_fresh.json` (80, new wording) | 48.8% | 0% | **0** | 39 | 2 |
+
+Per-category on the fresh set: debug 10/10, factual 10/10, math 9/10, logic 6/10,
+sentiment 3/10, ner 1/10, summarization 0/10, codegen 0/10.
+
+**Headline finding: every single one of the 41 fresh-set misses fell through to
+`factual` or `math` — zero landed in a narrow-format category.** The
+misroute-insurance design (factual absorbs anything; router requires literal
+trigger words rather than guessing) holds even against phrasing deliberately
+chosen to dodge its keyword lists. Concretely: sentiment's regex only recognizes
+an explicit positive/negative/neutral vocabulary or a fixed emotion-word-pair
+list (happy/glad/angry/sad/upset/excited/frustrated/pleased/annoyed/disappointed)
+— "supportive or critical", "praise or a complaint" etc. don't match anything and
+fall to factual. Codegen/summarization/NER require one of a fixed verb list
+(write/implement/create/... for codegen; summarize/condense/shorten/... for
+summarization; extract/identify/find/list/tag/... for NER) — "put together a
+class", "give me the highlights of", "who shows up in this paragraph" all miss
+and fall to factual too.
+
+**One edge case worth flagging (not a DANGEROUS-FP by the script's definition,
+but not fully safe either):** 2 fresh summarization prompts landed on **math**,
+not factual, because the source passage itself contained a digit+percent
+("...cut the marketing budget by 10 percent...", "...Revenue grew 8 percent...")
+which satisfies `MATH_SIGNAL`, while neither prompt's *instruction* phrasing
+("Reduce this transcript down to...", "Give me the highlights of...") matched the
+summarization regex. Math's tier still answers in a completely wrong shape for a
+summarization ask (numeric "Answer: <value>" instead of prose), unlike factual's
+general-purpose fallback. Traced two candidate one-line widenings for
+`R["summarization"]` and rejected both on collision risk before touching
+anything: `reduce ... down to` collides with "reduce this fraction down to
+lowest terms" (a genuine math phrasing); `give me ... highlights of` collides
+with ordinary factual asks ("give me the highlights of Einstein's career"). No
+regex change made — per this file's `run 2 vs 4` lesson, an unvalidated widening
+that trades one leak for a different false-positive is not a fix.
+
+**Decision (per the Phase B gate in ENDGAME-PLAN.md): SAFE-only outcome, ergo no
+router.py change, no submission.** Router is Person 1's; this file is the handoff
+— rerun `python scripts/router_audit.py tests/router_cases.json
+tests/router_cases_fresh.json` after any future router edit and confirm the dev
+file stays 100%/0 fallback before merging. The broader takeaway for the endgame:
+run 19-21's fresh-set losses are **not explained by dangerous router misroutes**
+(this file finds none); the remaining suspects are local semantic misses
+(qwen2.5-coder:3b silently wrong under verifiers, per the run-16/20 lesson) and/or
+genuine remote-model misses on the new phrasings — router.py itself looks solid.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:
