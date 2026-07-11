@@ -27,17 +27,30 @@ import urllib.request
 BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5:3b")
 # First call pays the model load from disk (~2GB into RAM); later calls don't.
-FIRST_CALL_TIMEOUT = 25.0
+# Measured 2026-07-11 (2-core pin): a loaded-under-contention first call took 57s
+# while the same prompt warm took 3.4s. The entrypoint warms the model in the
+# background, but a task can still race it, so the first real call gets a wide
+# budget. Later calls are compute-only: even 870-word passages answer in ~5s.
+FIRST_CALL_TIMEOUT = 60.0
 CALL_TIMEOUT = 15.0
+# Adaptive per-call ceiling: base + a measured per-KB slope, capped. Long
+# summarization passages get more wall-clock than a one-line sentiment prompt
+# WITHOUT a flat 45s that would let one task hold the serialized LOCAL_LOCK and
+# starve the queue (run 19's -5). Derived from the ~5s/870-word measurement with
+# generous margin; main.py re-checks the deadline budget after the lock anyway.
+SECONDS_PER_KB = 8.0
+MAX_CALL_TIMEOUT = 40.0
+KEEP_ALIVE = "30m"  # never unload the model mid-run
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
 
-# Categories allowed to try local-first. Run 16 (all five local-eligible
-# categories) scored 15/19: verifiers catch format/syntax, not semantics, and
-# ~2-3 confidently-wrong local answers slipped through. Recovery follows the
-# LocalFirst playbook — bisect through the re-scoring loop. Run 17
-# (sentiment,ner) passed 17/19 @ 4,199; this rung adds summarization, whose
-# word/sentence-limit verifiers already exist. Widen one category per passing run.
-# factual/math/logic stay remote (kimi) — proven 18/19. Empty env disables local.
+# Categories allowed to try local-first. The MODULE default is the proven-safe
+# rung (sentiment,ner,summarization → run 18, 100% @ 4,178); anyone importing
+# local.py without the deployment env gets that behavior. The DEPLOYMENT (Dockerfile
+# ENV) opts into the aggressive rung by adding debug,codegen — safe only with the
+# coder model (Track B: debug 10/10, codegen 9/10 on executed assertions; plain
+# qwen2.5:3b was algorithmically wrong here, sinking run 16) AND the run-19
+# lock-starvation fix in main.py. factual/math/logic stay remote (kimi) — proven
+# 18/19. Empty env disables local entirely (pure remote = the proven config).
 _raw = os.environ.get("LOCAL_CATEGORIES", "sentiment,ner,summarization")
 LOCAL_CATEGORIES = {c.strip() for c in _raw.split(",") if c.strip()}
 
@@ -97,16 +110,24 @@ def is_available(timeout: float = 3.0) -> bool:
         return False
 
 
+def _timeout_for(prompt_chars: int, first_call: bool) -> float:
+    """Scale the per-call timeout with passage length, bounded. First call also
+    absorbs the model-load cold start."""
+    scaled = min(CALL_TIMEOUT + SECONDS_PER_KB * prompt_chars / 1024.0, MAX_CALL_TIMEOUT)
+    return max(scaled, FIRST_CALL_TIMEOUT) if first_call else scaled
+
+
 def generate(prompt: str, category: str) -> str:
     """Blocking Ollama call (main.py runs it in a thread, serialized — the 2 vCPU
     box effectively processes one local generation at a time anyway)."""
     global _first_call_done
-    timeout = CALL_TIMEOUT if _first_call_done else FIRST_CALL_TIMEOUT
+    timeout = _timeout_for(len(prompt), not _first_call_done)
     instruction = _BASE_INSTRUCTION + _CATEGORY_INSTRUCTIONS.get(category, "")
     payload = {
         "model": MODEL,
         "prompt": instruction + prompt,
         "stream": False,
+        "keep_alive": KEEP_ALIVE,
         "options": {"temperature": 0, "num_ctx": 8192, "num_predict": NUM_PREDICT},
     }
     req = urllib.request.Request(
@@ -173,8 +194,19 @@ def _extract_code(text: str) -> str:
     return ""
 
 
+# Periods that do not end a sentence: dotted acronyms (U.S., e.g.), common
+# abbreviations, and single-letter initials before a capitalized name. Masking
+# them keeps the counter from rejecting good answers; erring lenient is the right
+# direction — over-counting burns paid remote fallbacks on correct output.
+_ABBREV = re.compile(
+    r"\b(?:[A-Za-z]\.){2,}"
+    r"|\b(?:Dr|Mr|Mrs|Ms|Prof|Rev|Gen|Sen|St|No|Fig|vs|etc|approx|Inc|Corp|Ltd|Co|Jr|Sr)\."
+    r"|\b[A-Z]\.(?=\s+[A-Z][a-z])")
+
+
 def _sentence_count(text: str) -> int:
-    parts = re.split(r"[.!?]+(?:\s|$)", text.strip())
+    masked = _ABBREV.sub(lambda m: m.group(0).replace(".", ""), text.strip())
+    parts = re.split(r"[.!?]+(?:\s|$)", masked)
     return len([p for p in parts if p.strip()])
 
 
@@ -226,6 +258,23 @@ def verify(prompt: str, category: str, answer: str) -> tuple[bool, str]:
             allowed = _SENTENCE_WORDS.get(sentences.group(1).lower()) or int(sentences.group(1))
             if _sentence_count(text) > allowed:
                 return False, f"exceeds {allowed}-sentence limit"
+        # This is the first run showing the judge REAL qwen2.5:3b summaries (run 18
+        # scored while summarization mostly fell back to remote). Two conservative
+        # provable-non-summary checks, both erring lenient:
+        prompt_words = prompt.split()
+        answer_words = text.split()
+        # (1) length ratio: a "summary" longer than 0.8x a >80-word source is not one.
+        if len(prompt_words) > 80 and len(answer_words) > 0.8 * len(prompt_words):
+            return False, "answer nearly as long as source (not a summary)"
+        # (2) echo: the answer opening copied verbatim from the source is not a
+        # summary. Compare on alphanumerics only so punctuation differences
+        # ("division." vs "division this") don't hide a real echo.
+        if len(answer_words) >= 15:
+            def _norm(s):
+                return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+            opening = _norm(" ".join(answer_words[:15]))
+            if opening and opening in _norm(prompt):
+                return False, "answer echoes the source verbatim"
     elif category in ("debug", "codegen"):
         ok, reason = _code_ok(prompt, text, is_debug=(category == "debug"))
         if not ok:

@@ -4,7 +4,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.local import LOCAL_CATEGORIES, verify  # noqa: E402
+from src.local import (  # noqa: E402
+    CALL_TIMEOUT, FIRST_CALL_TIMEOUT, MAX_CALL_TIMEOUT, LOCAL_CATEGORIES,
+    _timeout_for, verify,
+)
 
 
 def test_default_local_categories_are_the_current_bisect_rung():
@@ -39,6 +42,43 @@ def test_summarization_respects_stated_limits():
     assert verify(prompt, "summarization", "First sentence. Second sentence. Third.")[0] is False
     prompt_words = "Summarize in under 5 words: ..."
     assert verify(prompt_words, "summarization", "Far too many words in this answer.")[0] is False
+
+
+def test_timeout_scales_with_length_and_is_bounded():
+    # Short prompt, warm: near the base timeout.
+    assert _timeout_for(50, first_call=False) == CALL_TIMEOUT + 8.0 * 50 / 1024.0
+    # A ~2.5KB passage scales up but stays under the ceiling.
+    mid = _timeout_for(2560, first_call=False)
+    assert CALL_TIMEOUT < mid <= MAX_CALL_TIMEOUT
+    # A huge passage is capped, never unbounded.
+    assert _timeout_for(100_000, first_call=False) == MAX_CALL_TIMEOUT
+    # First call absorbs the cold start regardless of length.
+    assert _timeout_for(50, first_call=True) == FIRST_CALL_TIMEOUT
+
+
+def test_summarization_rejects_non_summaries():
+    source = " ".join(f"word{i}" for i in range(120))  # 120-word source
+    # An answer nearly as long as the source is not a summary.
+    too_long = " ".join(f"word{i}" for i in range(110))
+    assert verify(source, "summarization", too_long)[0] is False
+    # A genuine short summary of a long source passes.
+    assert verify(source, "summarization", "A brief three word summary here.")[0] is True
+
+
+def test_summarization_rejects_verbatim_echo():
+    source = ("The quarterly report shows that revenue rose twelve percent while "
+              "costs fell across every division this fiscal year, and management "
+              "expects the trend to continue into the next two quarters as well.")
+    # First 15+ words copied verbatim from the source is an echo, not a summary.
+    echo = "The quarterly report shows that revenue rose twelve percent while costs fell across every division."
+    assert verify(source, "summarization", echo)[0] is False
+
+
+def test_sentence_counter_ignores_abbreviations():
+    prompt = "Summarize in one sentence: ..."
+    # One real sentence that contains abbreviations must not be over-counted.
+    ok = "The U.S. team, led by Dr. Smith, shipped the product on time."
+    assert verify(prompt, "summarization", ok)[0] is True
 
 
 def test_code_answers_must_parse_and_contain_requested_function():
