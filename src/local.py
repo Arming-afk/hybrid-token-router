@@ -43,6 +43,20 @@ CALL_TIMEOUT = 15.0
 # on comparable prompt lengths). Give code categories a higher floor and ceiling;
 # main.py's LOCAL_MIN_REMAINING_SECONDS re-check after the lock is the guard
 # against this starving the queue on a tight overall budget.
+#
+# 30.0/55.0 is a validated sweet spot, not an arbitrary first guess -- tested
+# both directions on the same 106-task rehearsal (docs/eval-results.md "Phase D
+# follow-up" sections):
+# - 30.0/55.0: fixed debug outright (0/13 -> 5/13 local success, 18.6-25.6s/call).
+#   codegen still 0/13 but got 1 attempt through the queue (vs 0 before).
+# - 45.0/70.0 (tried and REJECTED): made things WORSE, not better -- debug
+#   dropped to 4/13 and codegen dropped to ZERO attempts (0/13, fully skipped).
+#   Longer ceiling -> each code call holds LOCAL_LOCK longer -> fewer tasks fit
+#   through the serialized queue before the budget runs out -> total answered
+#   fell 25 -> 23. This is a real queueing trade-off (higher per-call service
+#   time trades against total queue throughput), not free headroom -- do not
+#   raise further without a way to shrink the per-call time too (e.g. a lower
+#   NUM_PREDICT specifically for codegen), which is the next thing to try.
 CODE_CALL_TIMEOUT = 30.0
 CODE_MAX_CALL_TIMEOUT = 55.0
 # Adaptive per-call ceiling: base + a measured per-KB slope, capped. Long

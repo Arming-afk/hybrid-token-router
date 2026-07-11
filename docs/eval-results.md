@@ -385,6 +385,42 @@ not the *network* path), local Ollama answers fine over `localhost` regardless o
 
 64/64 tests pass (1 new: `test_code_categories_get_a_higher_timeout_floor_and_ceiling`).
 
+### Phase D follow-up #2 (2026-07-11, person3): raising the code-category timeout further is a REGRESSION — 30.0/55.0 stays
+
+Direct next test off the open question above: does raising `CODE_CALL_TIMEOUT`/
+`CODE_MAX_CALL_TIMEOUT` past 30.0/55.0 get codegen its first local success? Tried
+45.0/70.0 on the identical 106-task rehearsal. **Result: worse on every axis, not
+better.**
+
+| config | debug success | codegen success | codegen attempts (of 13) | total answered (106) |
+|---|---|---|---|---|
+| 15.0/40.0 (pre-fix baseline) | 0/13 | 0/13 | 2 | 17 |
+| **30.0/55.0 (kept)** | **5/13** | 0/13 | 1 | **25** |
+| 45.0/70.0 (tried, reverted) | 4/13 | 0/13 | **0** | 23 |
+
+Codegen went from 1 attempt to **zero** — all 13 skipped before ever getting the
+lock. debug's own success count also dropped (5→4) and its per-call time grew
+(18.6-25.6s → 26.9-30.1s for the same task_ids). Mechanism: a longer ceiling means
+each code-category call that actually runs holds the serialized `LOCAL_LOCK`
+longer, so fewer tasks fit through the queue before `LOCAL_MIN_REMAINING_SECONDS`
+starts skipping the rest — a real queueing trade-off (higher per-call service time
+vs. total queue throughput), not free headroom the way it looked from a single
+data point. **30.0/55.0 is the validated setting, reverted 45.0/70.0** (comment in
+`src/local.py` records both data points so this isn't re-tried blind later).
+
+Consequence for codegen: brute-forcing more timeout budget has diminishing (here,
+negative) returns. The only path 1 data point suggests: reduce codegen's *service
+time* rather than extend its *time budget* — e.g. a lower `NUM_PREDICT` specifically
+for codegen (shorter generated code, faster completion) so it both finishes faster
+AND doesn't need as much ceiling — untested, next candidate if codegen local
+support is still wanted; the safe fallback remains dropping codegen out of
+`LOCAL_CATEGORIES` back to remote (kimi) while keeping debug local, since debug is
+now genuinely proven at 30.0/55.0.
+
+64/64 tests pass (no test changes needed — `tests/test_local.py` asserts against
+the named constants, not hardcoded values, so it verified both configurations
+without edits).
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:
