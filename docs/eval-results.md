@@ -421,6 +421,113 @@ now genuinely proven at 30.0/55.0.
 the named constants, not hardcoded values, so it verified both configurations
 without edits).
 
+## Phase E: yassai-style batching (2026-07-11/12, person3, branch `person3/batch-calls`) — implemented, real-endpoint validated, NOT submitted
+
+The last item explicitly deferred in `docs/ENDGAME-PLAN.md`'s "Out of scope"
+section: pack multiple tasks into one LLM call instead of one call per task.
+Only secondhand documentation exists of yassai's own approach (one paragraph
+in `ENDGAME-PLAN.md`; their `yassai-summary.md` was never committed to this
+repo, confirmed via a full git-history search) — treated as inspiration, not a
+literal spec. Deliberate scope decisions made up front: group batches by our
+own proven tier assignments (CODE vs SMALL) rather than yassai's literal
+category split; no native tool-calling/code-execution for math/logic (no
+primary source, no `tools=` support in `src/client.py` today, unvalidatable
+against the grading proxy — math/logic get the same delimited-batch treatment
+as everything else, keeping the existing "brief steps, then `Answer: <value>`"
+convention); local-first and the deterministic solver stay completely
+untouched, still per-task and first; any batch slice that's missing,
+malformed, or fails verification falls back to today's exact solo call path
+for just that task, so no task is ever worse off than the pre-batching
+baseline.
+
+**Step 1 — real-endpoint probe, before any production code** (`scripts/probe_batch_format.py`,
+commit `94ff63a`): the graded harness is proxy-only and untestable locally, and
+a bogus-key docker rehearsal never produces a real completion, so this is the
+only way to get real signal on whether a model follows a batch format at all.
+Hits the PUBLIC Fireworks endpoint (`.env`'s real key; Track 1's own model IDs
+404 there, so a same-family public model — `kimi-k2p6` — stands in as an
+approximation) with two real batches: factual+math+logic (CODE tier) and
+sentiment+summarization+ner (SMALL tier), using distinct `@@TASK:<id>@@`/
+`@@ANSWER:<id>@@` marker keywords so an echoed prompt block can never be
+mistaken for an answer block.
+
+First attempt failed hard on the SMALL-tier batch: the model burned its entire
+token budget on visible chain-of-thought narration and never reached a single
+`@@ANSWER@@` block (`finish_reason=length`). Root cause: the probe forgot to
+send `reasoning_effort="none"` — the exact parameter `src/client.py` already
+sends on every production call for exactly this failure mode. Adding it fixed
+both batches completely: **6/6 tasks parsed correctly, zero cross-task
+instruction bleed, well under the timeout ceiling** (CODE batch: 2.7-4.0s;
+SMALL batch: 1.2-1.7s, vs. the harness's ~25-30s per-request rule), and every
+answer matched its own category's instruction (factual prose, math/logic
+"steps + `Answer:` line", sentiment label+justification, summarization
+matching the source, NER's 4 entities all correct). Because `src/batching.py`'s
+production `build_batch_messages`/`parse_batch_response`/`verify_slice` are
+reused directly by the probe script (not a separate copy), this also
+end-to-end-validated the actual parsing/verification code, not just the
+prompt format: all 6 real slices parsed and passed `verify_slice`.
+
+**Step 2 — implementation** (after showing the probe result and getting a
+go-ahead): new `src/batching.py` (`group_and_chunk`, `build_batch_messages`,
+`parse_batch_response`, `verify_slice`) plus a `src/main.py` rewrite —
+`solve_remote()` extracted verbatim from the old inline remote leg (the exact
+fallback target, guaranteeing "never worse than baseline"), a shared `pending`
+list, `try_batch()`/`run_batches()`, and `run()` split into a phase-1 (per-task
+zero-token paths) / phase-2 (grouped batch calls) barrier behind a
+`BATCHING_ENABLED` fail-open kill switch. New `tests/test_batching.py` (13
+tests: well-formed/missing/truncated/reordered batch responses, chunking
+invariants) and `tests/test_main.py` updates (a reusable
+`make_batch_aware_fake` helper, one existing test fixed because its 3 tasks
+now land in one real batch under the new design, 2 new end-to-end tests for
+the batch-success and partial-fallback paths). **79/79 tests pass.**
+
+**Step 3 — offline scale rehearsal, corrected once from real data:** first
+106-task rehearsal (`tests/scale_tasks_100.json`, `--cpus=2 --memory=4g`, bogus
+key) used an untested first-guess `PHASE2_RESERVE_SECONDS=200` and revealed a
+real problem: phase 1 hit **its own** "phase 1 deadline reached" cutoff at
+~310s, and only **14/106** answered — well below the pre-batching 30.0/55.0
+baseline's 25/106 — because reserving 200s of the 510s budget starved phase
+1's serialized local-first queue before many tasks even got a turn. Fixed
+using the probe's own measurements (real batch calls ran 1.2-5.9s, not
+anywhere close to 200s): dropped the reserve to **60s** (documented in
+`src/local.py`-style comment in `src/main.py`, both data points kept so this
+isn't re-guessed blind later). Re-ran the identical rehearsal:
+
+| metric | 200s reserve (rejected) | 60s reserve (kept) |
+|---|---|---|
+| phase 1 "DEADLINE" cutoff hit | **yes**, at ~310s | no |
+| answered (of 106) | 14 | 16 |
+| `DONE elapsed_s` | 336.6 | 389.9 |
+| exit code / `results.json` | 0 / valid | 0 / valid |
+
+16/106 is still below the pre-batching 25/106 baseline, and debug/codegen
+specifically show 0/13 local success in this run (vs. the proven 5/13 for
+debug at 30.0/55.0) — **not fully separable from this machine's known
+run-to-run local-timing noise** (the same phenomenon seen in the unrelated
+`person3/codegen-num-predict` experiment, where every category's calls ran
+slower on one pass with zero code changes to explain it), but there IS a real,
+structural piece too: reserving ANY nonzero time for phase 2 necessarily
+shrinks phase 1's own budget (450s vs. 510s at a 60s reserve), and debug/
+codegen were ALREADY the most budget-marginal categories even before batching
+existed. Because debug/codegen fail open to remote exactly as before, this is
+a **token-cost risk, not an accuracy risk** — and it doesn't touch batching's
+actual value proposition at all, which is the always-remote factual/math/logic
+categories that skip local-first entirely and go straight to `pending`.
+
+**What this rehearsal can and can't prove:** a bogus key makes every remote
+attempt fail immediately (`BATCH_ERROR`, 35 of them this run) by design, the
+same limitation as every prior bogus-key rehearsal in this repo — it validates
+TIMING SAFETY (no deadline overrun) and CODE-PATH ROBUSTNESS (the batch/
+solo-fallback machinery doesn't crash or hang under total remote failure), but
+it can never show real batch-parsing behavior. That question was already
+answered separately and directly by step 1's real-endpoint probe.
+
+**Decision: implemented, tested, pushed to `person3/batch-calls`; NOT merged
+to `main` and NOT submitted.** Per the approved plan, a live submission
+attempt is a separate, later decision — made only with real time margin before
+the freeze, with the current anchor (`6c8dcc4`, 100%@3,853) ready to resubmit
+immediately on any regression.
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:

@@ -10,12 +10,38 @@ import os
 import sys
 import time
 
-from . import client, local, models, prompts, router
+from . import batching, client, local, models, prompts, router
 
 INPUT_PATH = os.environ.get("INPUT_PATH", "/input/tasks.json")
 OUTPUT_PATH = os.environ.get("OUTPUT_PATH", "/output/results.json")
 DEADLINE_SECONDS = 8.5 * 60  # harness kills at 10 min; leave margin to write output
 CONCURRENCY = 6  # gentler on the proxy's rate limits; 429-hit answers come back empty
+
+# Batching (Phase E): tasks that still need a remote call after the zero-token
+# paths (deterministic solver, local-first) collect into `pending` instead of
+# calling the remote leg inline, then go out in grouped multi-task calls
+# (src/batching.py) -- validated against a real model on the public endpoint
+# (scripts/probe_batch_format.py) before this was wired in here. Any task whose
+# batch slice is missing/malformed/unverified falls back to solve_remote, so no
+# task is ever worse off than the pre-batching one-call-per-task baseline.
+# Fail-open kill switch: set BATCHING_ENABLED=false to get that exact baseline
+# back with zero code-path changes.
+BATCHING_ENABLED = os.environ.get("BATCHING_ENABLED", "true").strip().lower() != "false"
+# Reserved wall-clock so phase 2 (batches) always gets a real shot even if
+# phase 1's local-first attempts are still churning through the serialized
+# LOCAL_LOCK on a tight budget -- the always-remote categories (factual/math/
+# logic) are exactly where batching pays off every run.
+#
+# 200s (a first guess) was WRONG -- validated wrong on the 106-task rehearsal
+# (docs/eval-results.md, Phase E): reserving 200s of the 510s budget cut phase
+# 1 down to ~310s, hit ITS OWN "phase 1 deadline reached" cutoff, and answered
+# only 14/106 (vs the pre-batching baseline's 25) -- tasks got cancelled
+# mid-flight waiting on LOCAL_LOCK that would otherwise have finished. The real
+# public-endpoint probe (scripts/probe_batch_format.py) measured actual batch
+# calls at 1.2-5.9s each; even several chunks running through CONCURRENCY=6
+# realistically need seconds, not minutes. 60s gives ~10x margin over that
+# measurement while giving phase 1 back the time it actually needs.
+PHASE2_RESERVE_SECONDS = 60
 
 # Local-first: verified local answers cost zero tokens. Enabled at startup only if
 # the Ollama sidecar responds (fail-open: without it, behavior is the proven
@@ -49,6 +75,22 @@ async def try_complete(task_id: str, category: str, model: str,
         return text, bool(usage.get("truncated"))
     except Exception as error:
         log("ERROR", task_id=task_id, model=model, error=str(error)[:200])
+        return "", False
+
+
+async def try_complete_batch(task_ids: list[str], categories: list[str], model: str,
+                             messages: list[dict], max_tokens: int) -> tuple[str, bool]:
+    """Batch analogue of try_complete: one API call answering multiple tasks at
+    once. Returns (text, truncated) exactly like try_complete; the caller (
+    try_batch) is responsible for per-task parsing/fallback since a truncated
+    or empty batch reply must escalate every task in it, not just one."""
+    try:
+        text, usage = await client.complete(model, messages, max_tokens)
+        log("BATCH_USAGE", task_ids=task_ids, categories=categories, model=model, **usage)
+        CALL_LOG.append({"task_id": task_ids, "category": categories, "model": model, **usage})
+        return text, bool(usage.get("truncated"))
+    except Exception as error:
+        log("BATCH_ERROR", task_ids=task_ids, model=model, error=str(error)[:200])
         return "", False
 
 
@@ -94,7 +136,76 @@ async def try_local(task_id: str, category: str, prompt: str) -> str:
     return text
 
 
-async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: dict) -> None:
+async def solve_remote(task_id: str, category: str, prompt: str, tiers: dict, results: dict) -> None:
+    """One task's remote leg — identical to the pre-batching solo path. This is
+    the fallback target for any batch slice that's missing, malformed, or fails
+    verification, so no task is ever worse off than the one-call-per-task
+    baseline it replaces."""
+    messages, max_tokens, tier = prompts.render(category, prompt)
+    text, truncated = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
+    if not text.strip() or truncated:
+        retry_tier = "LARGE" if tier != "LARGE" else "MEDIUM"
+        # LARGE may be a reasoning model whose billed hidden thinking competes with
+        # the visible answer for max_tokens; give the rescue attempt enough room.
+        retry_max = max(max_tokens, 700)
+        retry_text, _ = await try_complete(task_id, category, tiers[retry_tier],
+                                           messages, retry_max)
+        # An empty rescue must not erase a truncated-but-present first answer.
+        if retry_text.strip():
+            text = retry_text
+    results[task_id] = prompts.postprocess(category, text)
+
+
+async def try_batch(chunk: list[dict], tiers: dict, results: dict) -> None:
+    """One chunk of 1+ same-tier tasks. A size-1 chunk skips the batch format
+    entirely (zero parsing risk, zero overhead, for zero savings otherwise). A
+    whole-batch failure (exception, empty reply, or a cap-truncated completion —
+    which can't be trusted for ANY task in it, unlike a single missing slice)
+    escalates every item to solve_remote; a good reply is parsed and verified
+    per task, with only the failing tasks escalated."""
+    if len(chunk) == 1:
+        item = chunk[0]
+        await solve_remote(item["task_id"], item["category"], item["prompt"], tiers, results)
+        return
+
+    tier = prompts.SPEC[chunk[0]["category"]]["tier"]
+    task_ids = [item["task_id"] for item in chunk]
+    categories = [item["category"] for item in chunk]
+    messages, max_tokens = batching.build_batch_messages(chunk)
+    text, truncated = await try_complete_batch(task_ids, categories, tiers[tier], messages, max_tokens)
+
+    if not text.strip() or truncated:
+        for item in chunk:
+            await solve_remote(item["task_id"], item["category"], item["prompt"], tiers, results)
+        return
+
+    parsed = batching.parse_batch_response(text, task_ids)
+    for item in chunk:
+        slice_ = parsed[item["task_id"]]
+        if slice_["complete"]:
+            ok, reason = batching.verify_slice(item["prompt"], item["category"], slice_["text"])
+        else:
+            ok, reason = False, "incomplete slice"
+        if ok:
+            log("BATCH", task_id=item["task_id"], category=item["category"], chars=len(slice_["text"]))
+            results[item["task_id"]] = prompts.postprocess(item["category"], slice_["text"])
+        else:
+            log("BATCH_FALLBACK", task_id=item["task_id"], category=item["category"], reason=reason)
+            await solve_remote(item["task_id"], item["category"], item["prompt"], tiers, results)
+
+
+async def run_batches(pending: list[dict], tiers: dict, sem: asyncio.Semaphore, results: dict) -> None:
+    chunks = batching.group_and_chunk(pending)
+
+    async def _run_one(chunk: list[dict]) -> None:
+        async with sem:
+            await try_batch(chunk, tiers, results)
+
+    await asyncio.gather(*(_run_one(chunk) for chunk in chunks), return_exceptions=True)
+
+
+async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: dict,
+                     pending: list[dict]) -> None:
     task_id, prompt = task["task_id"], task["prompt"]
     async with sem:
         # Pure arithmetic never touches the API: solved in-process for zero tokens,
@@ -113,35 +224,36 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
             if text:
                 results[task_id] = text
                 return
-        messages, max_tokens, tier = prompts.render(category, prompt)
-        text, truncated = await try_complete(task_id, category, tiers[tier], messages, max_tokens)
-        if not text.strip() or truncated:
-            retry_tier = "LARGE" if tier != "LARGE" else "MEDIUM"
-            # LARGE may be a reasoning model whose billed hidden thinking competes with
-            # the visible answer for max_tokens; give the rescue attempt enough room.
-            retry_max = max(max_tokens, 700)
-            retry_text, _ = await try_complete(task_id, category, tiers[retry_tier],
-                                               messages, retry_max)
-            # An empty rescue must not erase a truncated-but-present first answer.
-            if retry_text.strip():
-                text = retry_text
-        results[task_id] = prompts.postprocess(category, text)
+        if BATCHING_ENABLED:
+            pending.append({"task_id": task_id, "category": category, "prompt": prompt})
+        else:
+            await solve_remote(task_id, category, prompt, tiers, results)
 
 
 async def run(tasks: list[dict], results: dict) -> None:
     global LOCAL_ENABLED
     LOCAL_ENABLED = bool(local.LOCAL_CATEGORIES) and local.is_available()
     log("LOCAL_STATUS", enabled=LOCAL_ENABLED, categories=sorted(local.LOCAL_CATEGORIES))
+    log("BATCHING_STATUS", enabled=BATCHING_ENABLED)
     tiers = models.build_tiers()
     log("TIERS", **tiers)
     sem = asyncio.Semaphore(CONCURRENCY)
-    jobs = [solve_task(task, tiers, sem, results) for task in tasks
+    pending: list[dict] = []
+    jobs = [solve_task(task, tiers, sem, results, pending) for task in tasks
             if isinstance(task.get("prompt"), str) and task["prompt"].strip()]
-    remaining = DEADLINE_SECONDS - (time.monotonic() - START)
     try:
-        await asyncio.wait_for(asyncio.gather(*jobs, return_exceptions=True), timeout=remaining)
-    except asyncio.TimeoutError:
-        log("DEADLINE", note="deadline reached, writing partial results")
+        phase1_budget = _remaining()
+        if BATCHING_ENABLED:
+            phase1_budget = max(0.0, phase1_budget - PHASE2_RESERVE_SECONDS)
+        try:
+            await asyncio.wait_for(asyncio.gather(*jobs, return_exceptions=True), timeout=phase1_budget)
+        except asyncio.TimeoutError:
+            log("DEADLINE", note="phase 1 deadline reached, writing partial results")
+        if BATCHING_ENABLED and pending:
+            try:
+                await asyncio.wait_for(run_batches(pending, tiers, sem, results), timeout=_remaining())
+            except asyncio.TimeoutError:
+                log("DEADLINE", note="phase 2 (batches) deadline reached, writing partial results")
     finally:
         await client.aclose()
 

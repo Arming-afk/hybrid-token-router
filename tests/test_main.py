@@ -6,6 +6,7 @@ every task_id — no matter what the API, the input file, or the clock does.
 import asyncio
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -20,6 +21,33 @@ from src import client, local, main, router  # noqa: E402
 
 async def echo_complete(model, messages, max_tokens):
     return f"answer from {model}", {"prompt_tokens": 1, "completion_tokens": 1}
+
+
+_TASK_ID_RE = re.compile(r"@@TASK:([^\n@]+)@@")
+
+
+def make_batch_aware_fake(calls, answer_for=None, omit=(), solo_answer="model answer"):
+    """A fake client.complete that behaves correctly for BOTH a plain solo call
+    (no @@TASK@@ sentinel in the outgoing message -> returns solo_answer) and a
+    batch call (sentinel present -> synthesizes a well-formed
+    @@ANSWER@@/@@ENDANSWER@@ reply covering every real task_id found in the
+    outgoing message, via answer_for(task_id)). `omit` skips synthesizing a
+    block for those ids, to exercise the incomplete-slice fallback path.
+    Appends every `model` seen to `calls`."""
+    answer_for = answer_for or (lambda task_id: f"answer for {task_id}")
+
+    async def fake(model, messages, max_tokens):
+        calls.append(model)
+        task_ids = _TASK_ID_RE.findall(messages[-1]["content"])
+        if not task_ids:
+            return solo_answer, {}
+        blocks = [
+            f"@@ANSWER:{task_id}@@\n{answer_for(task_id)}\n@@ENDANSWER:{task_id}@@"
+            for task_id in task_ids if task_id not in omit
+        ]
+        return "\n\n".join(blocks), {}
+
+    return fake
 
 
 last_run_dir = None  # tmp dir of the most recent run_pipeline call, for log assertions
@@ -164,17 +192,77 @@ def test_pure_arithmetic_never_calls_the_api():
 def test_word_problems_still_go_to_the_api():
     calls = []
 
-    async def spy(model, messages, max_tokens):
-        calls.append(model)
-        return "model answer", {}
+    def answer_for(task_id):
+        # "a" is math (word problem, not pure arithmetic -> not solver-caught) and
+        # verify_slice requires an 'Answer:' line for math batch slices.
+        return "12 pens cost $36.\nAnswer: $36" if task_id == "a" else "model answer"
 
+    fake = make_batch_aware_fake(calls, answer_for=answer_for)
     rows = run_pipeline([
         {"task_id": "a", "prompt": "A shop sells pens at $3 each. How much do 12 pens cost?"},
         {"task_id": "b", "prompt": "What is 42?"},
         {"task_id": "c", "prompt": "What is photosynthesis?"},
-    ], spy)
-    assert all(r["answer"] == "model answer" for r in rows)
-    assert len(calls) == 3
+    ], fake)
+    by_id = {r["task_id"]: r["answer"] for r in rows}
+    assert by_id["a"] == "12 pens cost $36.\nAnswer: $36"
+    assert by_id["b"] == "model answer"
+    assert by_id["c"] == "model answer"
+    # math+factual+factual are all CODE tier -> one batch call covers all 3.
+    assert len(calls) == 1
+
+
+def test_batch_call_answers_multiple_tasks_in_one_call():
+    calls = []
+
+    def answer_for(task_id):
+        return {
+            "a": "A hash table averages O(1) lookup via a good hash function.",
+            "b": "Discount then tax.\nAnswer: $1,091.40",
+            "c": "Priya middle, Marco right, Jonas left.\nAnswer: Jonas, Priya, Marco",
+        }[task_id]
+
+    fake = make_batch_aware_fake(calls, answer_for=answer_for)
+    rows = run_pipeline([
+        {"task_id": "a", "prompt": "Explain how a hash table achieves average O(1) lookup."},
+        {"task_id": "b", "prompt": "A laptop costs $1,200 and is discounted 15%, then a "
+                                    "7% tax is added. Calculate the final price."},
+        {"task_id": "c", "prompt": "Three colleagues sit in a row. Priya is not on the left "
+                                    "end. Marco is directly right of Priya. Jonas is not in "
+                                    "the middle. Who sits where?"},
+    ], fake)
+    by_id = {r["task_id"]: r["answer"] for r in rows}
+    assert by_id["a"] == answer_for("a")
+    assert by_id["b"] == answer_for("b")
+    assert by_id["c"] == answer_for("c")
+    # factual+math+logic are all CODE tier -> fewer calls than tasks (one batch).
+    assert len(calls) == 1 < 3
+
+
+def test_batch_missing_slice_falls_back_to_solo_for_just_that_task():
+    calls = []
+
+    def answer_for(task_id):
+        return {
+            "a": "A hash table averages O(1) lookup via a good hash function.",
+            "b": "Discount then tax.\nAnswer: $1,091.40",
+            # "c" deliberately omitted from the batch reply below.
+        }.get(task_id, "solo fallback answer")
+
+    fake = make_batch_aware_fake(calls, answer_for=answer_for, omit={"c"},
+                                 solo_answer="solo fallback answer")
+    rows = run_pipeline([
+        {"task_id": "a", "prompt": "Explain how a hash table achieves average O(1) lookup."},
+        {"task_id": "b", "prompt": "A laptop costs $1,200 and is discounted 15%, then a "
+                                    "7% tax is added. Calculate the final price."},
+        {"task_id": "c", "prompt": "Three colleagues sit in a row. Priya is not on the left "
+                                    "end. Marco is directly right of Priya. Jonas is not in "
+                                    "the middle. Who sits where?"},
+    ], fake)
+    by_id = {r["task_id"]: r["answer"] for r in rows}
+    assert by_id["a"] == answer_for("a")
+    assert by_id["b"] == answer_for("b")
+    assert by_id["c"] == "solo fallback answer"  # fell back, but still answered -- never worse off
+    assert len(calls) == 2  # 1 batch call (a+b+c) + 1 solo fallback call for just "c"
 
 
 def test_verified_local_answer_skips_the_api():
