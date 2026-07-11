@@ -59,23 +59,38 @@ async def llm_classify(task_id: str, prompt: str, tiers: dict) -> str:
     return router.parse_fallback_letter(text)
 
 
+def _remaining() -> float:
+    return DEADLINE_SECONDS - (time.monotonic() - START)
+
+
 async def try_local(task_id: str, category: str, prompt: str) -> str:
     """One serialized local attempt; returns "" whenever the remote path should run."""
-    remaining = DEADLINE_SECONDS - (time.monotonic() - START)
-    if remaining < LOCAL_MIN_REMAINING_SECONDS:
+    if _remaining() < LOCAL_MIN_REMAINING_SECONDS:
         log("LOCAL_SKIP", task_id=task_id, note="global budget low")
         return ""
     async with LOCAL_LOCK:
+        # Re-check AFTER acquiring the lock: local generations are serialized, so a
+        # task can wait minutes in this queue behind slower ones (run 19's -5 was
+        # this starvation — long timeouts let one task hold the lock while others
+        # queued past the deadline and returned blank). Bail to remote rather than
+        # start a fresh (up to 60s) generation on a budget that already ran out.
+        if _remaining() < LOCAL_MIN_REMAINING_SECONDS:
+            log("LOCAL_SKIP", task_id=task_id, note="budget low after lock wait")
+            return ""
+        started = time.monotonic()
         try:
             text = await asyncio.to_thread(local.generate, prompt, category)
         except local.LocalError as error:
-            log("LOCAL_FAIL", task_id=task_id, error=str(error)[:120])
+            log("LOCAL_FAIL", task_id=task_id, category=category,
+                elapsed=round(time.monotonic() - started, 1), error=str(error)[:120])
             return ""
+        elapsed = round(time.monotonic() - started, 1)
     ok, reason = local.verify(prompt, category, text)
     if not ok:
-        log("LOCAL_REJECTED", task_id=task_id, reason=reason)
+        log("LOCAL_REJECTED", task_id=task_id, category=category,
+            elapsed=elapsed, reason=reason)
         return ""
-    log("LOCAL", task_id=task_id, category=category, chars=len(text))
+    log("LOCAL", task_id=task_id, category=category, chars=len(text), elapsed=elapsed)
     return text
 
 
