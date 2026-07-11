@@ -322,6 +322,69 @@ tighter for debug/codegen to shorten generation time, or narrow `LOCAL_CATEGORIE
 back to the run-17/18-proven `sentiment,ner,summarization` set as the safer anchor if
 the coder-rung's real-condition reliability can't be validated before the freeze.
 
+### Phase D follow-up (2026-07-11, person3): validated a code-category timeout fix; second CRLF bug found and fixed properly
+
+Picked up the first candidate from the list above — offline-testable while a
+teammate has the merged `main` out for submission, no submission risk of its own.
+
+**Fix:** `src/local.py` — `_timeout_for` now takes `category`; debug/codegen get a
+higher floor and ceiling (`CODE_CALL_TIMEOUT=30.0`, `CODE_MAX_CALL_TIMEOUT=55.0` vs
+the default `CALL_TIMEOUT=15.0`/`MAX_CALL_TIMEOUT=40.0`) because their completions
+(a full fenced code block) run long regardless of prompt length — the timeout
+formula only ever scaled with *prompt* length. `generate()` passes `category`
+through. Backward compatible (`category=""` default keeps old behavior for any
+other caller). New unit tests in `tests/test_local.py`.
+
+**Re-ran the identical 106-task rehearsal** (same `tests/scale_tasks_100.json`,
+same throttle) to compare against the Phase D baseline above:
+
+| category | LOCAL success (before → after) | LOCAL_FAIL (before → after) | LOCAL_SKIP (before → after) |
+|---|---|---|---|
+| debug | 0/13 → **5/13** | 5 → **0** | 8 → 8 |
+| codegen | 0/13 → 0/13 | 2 → 1 | 11 → 12 |
+| total answered (106 tasks) | 17 → **25** | | |
+
+**debug went from 0% to 100% success on every attempted call** (5/5, completing in
+18.6-25.6s — confirming the earlier 15.6-16.3s timeouts were killing genuinely-
+in-progress correct generations, not hung ones). **codegen didn't show a clear win**:
+only 1 attempt got through the queue before `LOCAL_SKIP` (12/13 skipped, worse than
+before's 11/13), and that one attempt still timed out at 30.6s — right at the new
+floor — suggesting codegen specifically may need an even higher `CODE_CALL_TIMEOUT`
+or the sample is just too small to conclude (n=1). The starvation side-effect I was
+watching for (longer per-call time holding `LOCAL_LOCK` longer, causing *more*
+`LOCAL_SKIP` elsewhere) was real but small: total `LOCAL_SKIP` moved 39→40, not a
+cascade. **Net: a real, cheap, validated improvement for debug; codegen is still an
+open question** — worth a second data point with a rehearsal biased toward more
+codegen tasks landing earlier in the queue (or trying `CODE_CALL_TIMEOUT` ≈45s)
+before trusting it on a submission.
+
+**Second finding: the CRLF entrypoint bug came back**, this time under
+`.gitattributes` itself — `git ls-files --eol entrypoint.sh` showed the `eol=lf`
+attribute correctly recognized (`attr/text eol=lf`) but the working-tree file was
+still CRLF (`w/crlf`) after a fresh `git checkout`/`git merge --ff-only` sequence on
+this machine. This is a real Git-for-Windows inconsistency (`core.autocrlf=true`
+not reliably yielding to `eol=lf` on every checkout path, at least on this box/git
+version) — `.gitattributes` alone is not sufficient here. **Fixed properly this
+time at the Dockerfile level**, immune to host checkout line endings entirely:
+`RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh` right after `COPY`.
+This means the built image is correct regardless of what line endings the
+building machine's git produced — CI (Linux, presumably unaffected anyway) and any
+future Windows contributor both get a working image now. `.gitattributes` is kept
+as a secondary defense (helps editors/diff tools even where it doesn't fully
+control checkout behavior).
+
+**Also completed the pending pre-submission `--network=none` audit** from
+`docs/RUNBOOK.md` (was written but never run for real): `docker run --rm
+--network=none --cpus=2 -m 4g` with the full `FIREWORKS_*` env vars set — every
+remote call correctly fails with `"Connection error."` (genuine unreachability,
+confirming no other host is contacted — a bogus-key run only proves the *key* path,
+not the *network* path), local Ollama answers fine over `localhost` regardless of
+`--network=none` (3/10 answered locally on the small `tests/sample_tasks.json` set),
+`results.json` is valid, exit code 0. `grep -rn "http" src/` surfaces only the
+`FIREWORKS_BASE_URL` env reference and `localhost:11434` — audit passes cleanly.
+
+64/64 tests pass (1 new: `test_code_categories_get_a_higher_timeout_floor_and_ceiling`).
+
 ## Organizer clarification (2026-07-10) — read before choosing the final submission
 
 Announced on the contest channel:

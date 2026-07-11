@@ -29,7 +29,13 @@ RUN ollama serve > /tmp/ollama_build.log 2>&1 & \
 
 COPY src/ src/
 COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
+# .gitattributes asks for LF, but that's a checkout-time normalization that some
+# Windows git configs (core.autocrlf=true, no reliable eol=lf override observed
+# on this box) don't honor consistently -- a CRLF entrypoint.sh breaks the
+# shebang once COPY'd into this Linux image (`exec ./entrypoint.sh: no such file
+# or directory`, container never starts). Strip any \r at build time so the
+# image is correct regardless of what line endings the host checkout produced.
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
 # The harness injects only FIREWORKS_*; these defaults ARE the local-path config.
 # LOCAL_CATEGORIES="" disables local entirely (pure remote = the proven config).

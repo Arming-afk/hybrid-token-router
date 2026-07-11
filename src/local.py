@@ -33,6 +33,18 @@ MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5:3b")
 # budget. Later calls are compute-only: even 870-word passages answer in ~5s.
 FIRST_CALL_TIMEOUT = 60.0
 CALL_TIMEOUT = 15.0
+# debug/codegen answer with a full fenced code block (see _CATEGORY_INSTRUCTIONS),
+# a materially longer completion than a sentiment label or an NER line list, even
+# on a short prompt. The base/scaled timeout above is tuned to PROMPT length
+# (prompt-eval time); it has no term for COMPLETION length (generation time), so
+# code categories were timing out at scale even on short prompts (Phase D 106-task
+# rehearsal, docs/eval-results.md: 7/7 attempted debug+codegen calls timed out at
+# 15.6-16.3s, right at the untuned ceiling, vs 6-14s for sentiment/ner/summarization
+# on comparable prompt lengths). Give code categories a higher floor and ceiling;
+# main.py's LOCAL_MIN_REMAINING_SECONDS re-check after the lock is the guard
+# against this starving the queue on a tight overall budget.
+CODE_CALL_TIMEOUT = 30.0
+CODE_MAX_CALL_TIMEOUT = 55.0
 # Adaptive per-call ceiling: base + a measured per-KB slope, capped. Long
 # summarization passages get more wall-clock than a one-line sentiment prompt
 # WITHOUT a flat 45s that would let one task hold the serialized LOCAL_LOCK and
@@ -110,10 +122,16 @@ def is_available(timeout: float = 3.0) -> bool:
         return False
 
 
-def _timeout_for(prompt_chars: int, first_call: bool) -> float:
+def _timeout_for(prompt_chars: int, first_call: bool, category: str = "") -> float:
     """Scale the per-call timeout with passage length, bounded. First call also
-    absorbs the model-load cold start."""
-    scaled = min(CALL_TIMEOUT + SECONDS_PER_KB * prompt_chars / 1024.0, MAX_CALL_TIMEOUT)
+    absorbs the model-load cold start. debug/codegen get a higher floor/ceiling
+    (see CODE_CALL_TIMEOUT) because their completions run long regardless of
+    prompt length."""
+    base, ceiling = (
+        (CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT) if category in ("debug", "codegen")
+        else (CALL_TIMEOUT, MAX_CALL_TIMEOUT)
+    )
+    scaled = min(base + SECONDS_PER_KB * prompt_chars / 1024.0, ceiling)
     return max(scaled, FIRST_CALL_TIMEOUT) if first_call else scaled
 
 
@@ -121,7 +139,7 @@ def generate(prompt: str, category: str) -> str:
     """Blocking Ollama call (main.py runs it in a thread, serialized — the 2 vCPU
     box effectively processes one local generation at a time anyway)."""
     global _first_call_done
-    timeout = _timeout_for(len(prompt), not _first_call_done)
+    timeout = _timeout_for(len(prompt), not _first_call_done, category)
     instruction = _BASE_INSTRUCTION + _CATEGORY_INSTRUCTIONS.get(category, "")
     payload = {
         "model": MODEL,

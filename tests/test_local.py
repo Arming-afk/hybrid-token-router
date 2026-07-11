@@ -5,8 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.local import (  # noqa: E402
-    CALL_TIMEOUT, FIRST_CALL_TIMEOUT, MAX_CALL_TIMEOUT, LOCAL_CATEGORIES,
-    _timeout_for, verify,
+    CALL_TIMEOUT, CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT, FIRST_CALL_TIMEOUT,
+    MAX_CALL_TIMEOUT, LOCAL_CATEGORIES, _timeout_for, verify,
 )
 
 
@@ -54,6 +54,20 @@ def test_timeout_scales_with_length_and_is_bounded():
     assert _timeout_for(100_000, first_call=False) == MAX_CALL_TIMEOUT
     # First call absorbs the cold start regardless of length.
     assert _timeout_for(50, first_call=True) == FIRST_CALL_TIMEOUT
+
+
+def test_code_categories_get_a_higher_timeout_floor_and_ceiling():
+    # debug/codegen produce a full code block regardless of prompt length, so
+    # their base/ceiling are both higher than the default category timeout.
+    assert _timeout_for(50, first_call=False, category="debug") == (
+        CODE_CALL_TIMEOUT + 8.0 * 50 / 1024.0)
+    assert _timeout_for(50, first_call=False, category="codegen") > (
+        _timeout_for(50, first_call=False))
+    assert _timeout_for(100_000, first_call=False, category="debug") == CODE_MAX_CALL_TIMEOUT
+    assert CODE_MAX_CALL_TIMEOUT > MAX_CALL_TIMEOUT
+    # Non-code categories are unaffected (default category arg preserves old behavior).
+    assert _timeout_for(50, first_call=False, category="sentiment") == (
+        _timeout_for(50, first_call=False))
 
 
 def test_summarization_rejects_non_summaries():
