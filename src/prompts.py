@@ -67,6 +67,15 @@ submission so each result cleanly measures one variable:
   SEPARATE later submission if the widening passes: math/logic → answer-only
   (~-150, correctness risk on kimi). Factual stays "under 50 words"; do NOT squeeze
   it below the proven floor (failed the gate at 73.7% twice under 120→60/1-2sent).
+- Fresh-set revert (2026-07-11 afternoon): the judge set was REFRESHED (runs
+  19-21: the 100% anchor re-scored 73.7%; the coder rung 78.9%; ~4 losses persist
+  across radically different local configs, pointing at REMOTE answer quality on
+  the new phrasings). Every moonshot output squeeze was validated as costless on
+  the OLD set only, so the judge-robustness cuts are reverted wholesale: factual
+  back to the twice-proven "under 120 words", math/logic back to brief steps at
+  full caps, sentiment back to label+justification, debug back to bug-sentence+
+  code, codegen drops the comment ban. Token cost ~+500-800/run — irrelevant
+  while below the gate; failed runs do not rank at all.
 - Moonshot fix (resubmission after run 14's INFRA_ERROR): factual/math/logic tier
   MEDIUM -> CODE (kimi). Community-confirmed intel (docs/eval-results.md, LocalFirst
   section): gemma-4-31b-it has NO serverless support and 404s at grading too, so
@@ -87,9 +96,10 @@ SPEC = {
         # has no serverless deployment and 404s at grading — actually reachable.
         # Misroute-default duty rides on routing quality (hardened router, 187/187).
         "tier": "CODE",
-        # Cap ~1.5x the instructed 50 words so an obedient answer never truncates.
-        "max_tokens": 120,
-        "instruction": f"{_BASE} Answer clearly in under 50 words.",
+        # Fresh-set revert: back to the floor that failed the gate twice when
+        # squeezed (120->60/1-2sent both scored 73.7% on the old set).
+        "max_tokens": 300,
+        "instruction": f"{_BASE} Answer clearly in under 120 words.",
     },
     "math": {
         # The 2 short steps stay: they double as chain-of-thought; answer-only
@@ -97,14 +107,15 @@ SPEC = {
         # prompts never get here — main.py short-circuits them to the free
         # deterministic solver first.
         "tier": "CODE",
-        "max_tokens": 150,
-        "instruction": f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line.",
+        "max_tokens": 400,
+        "instruction": f"{_BASE} Show brief steps, then 'Answer: <value>' on its own line.",
     },
     "sentiment": {
         "tier": "SMALL",
-        "max_tokens": 30,
+        "max_tokens": 120,
         "instruction": (
-            f"{_BASE} One word: positive, negative, or neutral."
+            f"{_BASE} Start with one label - positive, negative, neutral, or mixed - "
+            f"then one brief justification."
         ),
     },
     "summarization": {
@@ -127,9 +138,10 @@ SPEC = {
         # Bug-name sentence dropped in the moonshot: the judge's category description
         # says "identify AND correct", so this knowingly spends gate headroom.
         "tier": "CODE",
-        "max_tokens": 450,
+        "max_tokens": 520,
         "instruction": (
-            f"{_BASE} Only the corrected code, in one fenced block. No comments."
+            f"{_BASE} State the bug in one sentence, then the fully corrected code "
+            f"in one fenced block."
         ),
     },
     "logic": {
@@ -137,17 +149,16 @@ SPEC = {
         # reachability reason (the LocalFirst competitor routed seating puzzles to
         # kimi specifically because it solves them reliably).
         "tier": "CODE",
-        "max_tokens": 150,
+        "max_tokens": 420,
         "instruction": (
-            f"{_BASE} At most 2 short steps, then 'Answer: <value>' on its own line."
+            f"{_BASE} Show brief steps, then 'Answer: <value>' on its own line."
         ),
     },
     "codegen": {
         "tier": "CODE",
         "max_tokens": 520,
         "instruction": (
-            f"{_BASE} Only the code, in one fenced block, correct and self-contained. "
-            f"No comments."
+            f"{_BASE} Only the code, in one fenced block, correct and self-contained."
         ),
     },
 }
