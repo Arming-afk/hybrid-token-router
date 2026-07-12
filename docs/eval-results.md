@@ -584,6 +584,34 @@ The harness gives one number per submission — treat each run as one eval data 
 | 24 | `fded69b` | **Phase E batching** (yassai-style: pack same-tier remote leftovers into one delimited multi-task call, per-slice verify + solo fallback; merged from person3/batch-calls after full offline gates) | **100%** (19/19) | **gate PASSED but 5,067 tokens — a REGRESSION of ~+950–1,200 vs the anchor (3,853–4,104).** Accuracy held at 100% (the fail-open-to-solo safety worked perfectly), but batching is a net token LOSS *for our specific config*: the saving batching buys is the per-call fixed overhead (esp. minimax's ~100-tok hidden prompt tax), but our remote categories run on **kimi (CODE tier), which is tax-free**, and our easy+code categories answer **local (0 tokens)** first — so there is almost no per-call overhead to reclaim, while batching ADDS the ~100-tok marker/system scaffolding per batch + 40-tok/task markers + double-billing on every slice that falls back to solo. **Verdict: batching is dead for this config. Do NOT ship it; keep BATCHING_ENABLED=false / stay on the anchor.** The merge stays on main behind its kill switch; the closer remains `6c8dcc4`/`d93fdd1`/`d4ed2ba`. |
 | 25 | `e4db9f0` | **ALL-LOCAL rung (rung 5):** every category tries local first on qwen2.5-coder (factual/math/logic added to LOCAL_CATEGORIES + 'Answer:'-line verifier; BATCHING_ENABLED=false). Offline pre-flight: factual 10/10, math 9/10, logic 7/10+1 reject. | **94.7%** (18/19) | **gate PASSED, 4,047 tokens — a WASH: statistically identical to the anchor (3,853–4,104), NOT the ~1.5–2.5k leader zone predicted.** The predicted saving did not materialize for the same reason as run 18's −21 anomaly and the Phase D scale finding: **the grading box's serialized local throughput (one LOCAL_LOCK, 2 vCPU, 4 GB) is the hard cap, not category coverage.** Adding factual/math/logic to the local queue doesn't create more free answers — the box can only service so many local calls before the budget guard / timeouts push the overflow open to remote, which still bills tokens. So all-local just reshuffles WHICH tasks get the scarce free slots; total remote spend ≈ unchanged. **Lesson: the local lever is throughput-bound and now exhausted; widening categories cannot reach the leader zone on this hardware.** All-local also carries MORE fresh-prompt risk than the anchor (factual on a 3B vs kimi), so for the final re-score the anchor `6c8dcc4` is the safer closer at equal tokens. |
 
+### Smaller-local-model probe (2026-07-12, offline, NOT submitted) — DUD
+
+Hypothesis: all-local was a wash because the 2-vCPU box can't service the 3B fast
+enough (throughput wall). A smaller/faster local model would clear more of the
+queue locally → fewer remote fallbacks → lower tokens. Pulled `qwen2.5:1.5b`,
+ran all 8 eval categories pinned to 2 cores:
+
+| category | qwen2.5:1.5b | qwen2.5-coder:3b (baseline) |
+|---|---|---|
+| factual | **7/10** (3 wrong) | 10/10 |
+| math | 7/10 (+3 reject) | 9/10 |
+| logic | 6/10 (2 wrong) | 7/10 |
+| sentiment | 8/10 | (proven) |
+| **ner** | **3/10 (7 wrong)** — collapse | (proven) |
+| summ/debug/codegen | verify-ok (semantic quality suspect) | debug 10/10, codegen 9/10 (executed) |
+| **mean latency/call** | **3.4s** | ~3.8s |
+
+**Verdict: DUD, both axes.** (1) The throughput win did NOT materialize — 1.5b is
+only ~10% faster (3.4s vs 3.8s), nowhere near the 2-3x needed. Per-call time on
+this box is dominated by fixed overhead (prompt-eval + num_ctx=8192 KV setup +
+first-token latency), not generation speed, so halving params barely moves
+wall-clock. (2) Accuracy collapses — factual 10→7, ner effectively 3/10, math
+9→7. **The local lever is throughput-bound by FIXED OVERHEAD, not model size —
+a smaller model can't unlock it.** Measured offline in ~10 min, zero submissions
+burned. Local levers now exhausted: batching (regression), num-predict
+(inconclusive), all-local (wash), smaller-model (dud). Ceiling stands at the
+anchor's ~3,900-4,100 @ 94.7-100%.
+
 Run 18 lessons (2026-07-10):
 - **First 100% (19/19), 4,178 tokens — new endgame anchor `7bb50c4`.**
 - **The −21 anomaly**: +summarization was predicted to shed several hundred
