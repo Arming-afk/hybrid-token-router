@@ -1,4 +1,5 @@
 """Unit tests for local.py's zero-token verifiers (pure functions, no network)."""
+import json
 import sys
 from pathlib import Path
 
@@ -6,7 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.local import (  # noqa: E402
     CALL_TIMEOUT, CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT, FIRST_CALL_TIMEOUT,
-    MAX_CALL_TIMEOUT, LOCAL_CATEGORIES, _timeout_for, verify,
+    MAX_CALL_TIMEOUT, MAX_PROMPT_CHARS, LOCAL_CATEGORIES, LocalError,
+    _timeout_for, generate, runner_options, verify, warmup_payload,
 )
 
 
@@ -56,16 +58,17 @@ def test_timeout_scales_with_length_and_is_bounded():
     assert _timeout_for(50, first_call=True) == FIRST_CALL_TIMEOUT
 
 
-def test_code_categories_get_a_higher_timeout_floor_and_ceiling():
-    # debug/codegen produce a full code block regardless of prompt length, so
-    # their base/ceiling are both higher than the default category timeout.
-    assert _timeout_for(50, first_call=False, category="debug") == (
-        CODE_CALL_TIMEOUT + 8.0 * 50 / 1024.0)
-    assert _timeout_for(50, first_call=False, category="codegen") > (
-        _timeout_for(50, first_call=False))
-    assert _timeout_for(100_000, first_call=False, category="debug") == CODE_MAX_CALL_TIMEOUT
+def test_generation_heavy_categories_get_a_higher_timeout_floor_and_ceiling():
+    # debug/codegen produce a full code block regardless of prompt length, and
+    # math/logic produce steps + an Answer line (quota-mode A/B: math died at
+    # 15.3s, logic at 16.1s on the 15s base; 35.5s succeeded), so all four get
+    # the higher validated 30/55 floor/ceiling.
+    for category in ("debug", "codegen", "math", "logic"):
+        assert _timeout_for(50, first_call=False, category=category) == (
+            CODE_CALL_TIMEOUT + 8.0 * 50 / 1024.0)
+        assert _timeout_for(100_000, first_call=False, category=category) == CODE_MAX_CALL_TIMEOUT
     assert CODE_MAX_CALL_TIMEOUT > MAX_CALL_TIMEOUT
-    # Non-code categories are unaffected (default category arg preserves old behavior).
+    # Short-output categories are unaffected (default category arg preserves old behavior).
     assert _timeout_for(50, first_call=False, category="sentiment") == (
         _timeout_for(50, first_call=False))
 
@@ -122,6 +125,39 @@ def test_debug_rejects_unchanged_buggy_code():
     fixed = "The bug is subtraction.\n```python\ndef add(a, b):\n    return a + b\n```"
     assert verify(prompt, "debug", unchanged)[0] is False
     assert verify(prompt, "debug", fixed)[0] is True
+
+
+def test_warmup_payload_matches_production_runner_options():
+    # The runner-identity invariant: warmup and generate() must send identical
+    # runner options (num_ctx, num_thread), or Ollama reloads the model on the
+    # first real task and the warmup was wasted (the pre-rung bug).
+    payload = json.loads(warmup_payload())
+    opts = runner_options()
+    assert set(opts) == {"num_ctx", "num_thread"}
+    for key, value in opts.items():
+        assert payload["options"][key] == value
+    assert payload["options"]["num_predict"] == 1  # warmup generates ~nothing
+    assert payload["keep_alive"] == "30m"
+
+
+def test_num_ctx_is_a_single_pinned_value():
+    # Dynamic num_ctx (run 26) flapped the runner mid-run; the module must expose
+    # exactly one window for every call.
+    opts = runner_options()
+    assert isinstance(opts["num_ctx"], int) and opts["num_ctx"] >= 2048
+    assert opts["num_thread"] >= 1
+
+
+def test_overlong_prompt_skips_local_without_a_network_call():
+    # A prompt that can't fit the pinned window must raise LocalError BEFORE any
+    # HTTP request (this test would hang/network-fail otherwise) so main.py fails
+    # open to remote instantly instead of submitting a silently truncated read.
+    try:
+        generate("x" * (MAX_PROMPT_CHARS + 1), "summarization")
+    except LocalError as error:
+        assert "chars" in str(error)
+    else:
+        raise AssertionError("expected LocalError for overlong prompt")
 
 
 if __name__ == "__main__":

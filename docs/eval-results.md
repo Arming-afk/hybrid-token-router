@@ -583,6 +583,71 @@ The harness gives one number per submission — treat each run as one eval data 
 | 23 | `d4ed2ba` | INFRA_ERROR recovery re-save of the run-22 image (docs-only diff on 6c8dcc4 = same image content) after a transient "pull error" on the first submit | **94.7%** (18/19) | **gate PASSED, 4,104 tokens.** SAME image content as run 22's 100%@3,853 → the config swings 94.7%↔100% AND 3,853↔4,104 run-to-run (token count moves with how many debug/codegen local calls succeed each run; a timeout → remote kimi adds tokens). Confirms scoring volatility on BOTH axes and that run 22's "timeout fix was load-bearing for accuracy" reading is not supported — the same bits give both scores. The config is a reliable *gate-passer* (100% and 94.7%); the token number is what varies. |
 | 24 | `fded69b` | **Phase E batching** (yassai-style: pack same-tier remote leftovers into one delimited multi-task call, per-slice verify + solo fallback; merged from person3/batch-calls after full offline gates) | **100%** (19/19) | **gate PASSED but 5,067 tokens — a REGRESSION of ~+950–1,200 vs the anchor (3,853–4,104).** Accuracy held at 100% (the fail-open-to-solo safety worked perfectly), but batching is a net token LOSS *for our specific config*: the saving batching buys is the per-call fixed overhead (esp. minimax's ~100-tok hidden prompt tax), but our remote categories run on **kimi (CODE tier), which is tax-free**, and our easy+code categories answer **local (0 tokens)** first — so there is almost no per-call overhead to reclaim, while batching ADDS the ~100-tok marker/system scaffolding per batch + 40-tok/task markers + double-billing on every slice that falls back to solo. **Verdict: batching is dead for this config. Do NOT ship it; keep BATCHING_ENABLED=false / stay on the anchor.** The merge stays on main behind its kill switch; the closer remains `6c8dcc4`/`d93fdd1`/`d4ed2ba`. |
 | 25 | `e4db9f0` | **ALL-LOCAL rung (rung 5):** every category tries local first on qwen2.5-coder (factual/math/logic added to LOCAL_CATEGORIES + 'Answer:'-line verifier; BATCHING_ENABLED=false). Offline pre-flight: factual 10/10, math 9/10, logic 7/10+1 reject. | **94.7%** (18/19) | **gate PASSED, 4,047 tokens — a WASH: statistically identical to the anchor (3,853–4,104), NOT the ~1.5–2.5k leader zone predicted.** The predicted saving did not materialize for the same reason as run 18's −21 anomaly and the Phase D scale finding: **the grading box's serialized local throughput (one LOCAL_LOCK, 2 vCPU, 4 GB) is the hard cap, not category coverage.** Adding factual/math/logic to the local queue doesn't create more free answers — the box can only service so many local calls before the budget guard / timeouts push the overflow open to remote, which still bills tokens. So all-local just reshuffles WHICH tasks get the scarce free slots; total remote spend ≈ unchanged. **Lesson: the local lever is throughput-bound and now exhausted; widening categories cannot reach the leader zone on this hardware.** All-local also carries MORE fresh-prompt risk than the anchor (factual on a 3B vs kimi), so for the final re-score the anchor `6c8dcc4` is the safer closer at equal tokens. |
+| 26 | `f8e39c4` | Dynamic num_ctx (2048 default, 8192 for >5k-char prompts) on top of all-local — the "2xxx gamble" | **100%** (19/19) | **gate PASSED, 4,037 tokens — another WASH inside the anchor band (3,853–4,104).** Post-mortem (see "Runner-pin rung" below): dynamic num_ctx was attacking the right layer with the wrong move — in Ollama a num_ctx change is a RUNNER RELOAD, so flapping 2048↔8192 mid-run forces model reloads inside task timeout windows. Worse, the entrypoint warmup sent no num_ctx at all, so the very first production call has ALWAYS paid a reload — the warmup never worked in any prior run either. |
+
+### Runner-pin rung (2026-07-12, endgame): the local wall was thread oversubscription
+
+Every local lever since run 18 washed for the same unexplained reason: local calls
+time out on the grading box (while measuring fast on our 2-core-PINNED repro) and
+fail open to paid remote. Root causes found and fixed, in order of evidence:
+
+1. **Thread oversubscription under a CPU quota (the big one).** llama.cpp defaults
+   `num_thread` to the DETECTED core count. A `--cpus=2` container on a many-core
+   host still shows every host core in /proc — so the runner spawns N threads that
+   thrash against a 2-CPU quota. Our previous repro pinned with cpuset (llama sees
+   2 cores → 2 threads → fast), silently hiding the failure mode. A/B on the same
+   image, `--cpus=2 --memory=4g`, 16-core host, bogus API key (pure local):
+   - `num_thread=16` (≈ old default behavior): **0/10 local, every call timed out
+     at 60s** — exactly the all-local wash signature of runs 25/26.
+   - `num_thread=2` (the pin): **7/10 local**, calls 5.3–35.5s.
+   Fix: `options.num_thread=2` on every call (env `LOCAL_NUM_THREAD`). No-op if
+   the box is a true 2-core VM; decisive if it's quota-throttled.
+2. **The warmup never worked.** entrypoint.sh warmed with NO options, but in
+   Ollama `num_ctx` (and `num_thread`) are RUNNER options: the first production
+   call, with different options, forced a full model reload anyway — in every run
+   to date. And run 26's dynamic 2048/8192 flapped that reload mid-run. Fix: ONE
+   pinned `num_ctx=4096` (covers ~10k chars; >10k-char prompts skip local instead
+   of silently truncating), and the warmup payload is now BUILT BY src/local.py
+   (`warmup_payload()`) so it cannot drift from production options again.
+   `OLLAMA_NUM_PARALLEL=1` also set (parallel slots multiply KV allocation).
+3. **Timeouts were sized for a faster box than the quota reality.** The quota box
+   generates ~5-13 tok/s, so any >100-token output outlives its budget: run C saw
+   factual die at 15.4s, math at 30.8s (the same task SUCCEEDED at 35.5s in run B
+   when given room), logic at 31.1s — each one burning lock time AND then paying
+   remote. Fixes: math/logic join debug/codegen as generation-heavy; base 15→25
+   (standard) and 30→40 (generation-heavy), ceilings 40/55 unchanged. becc4c8's
+   45/70 regression was a 106-task queue-throughput effect; at 19 judge tasks the
+   budget guard, not the ceiling, bounds total queue time, and the worst case
+   ("overflow goes remote") is exactly the pre-rung baseline.
+4. **First call raced the model load at 60s** under quota contention →
+   FIRST_CALL_TIMEOUT 60→90 (run C's first call: 54.4s, success).
+5. **Local queue is now cost-ordered.** Task order ≈ LOCAL_LOCK queue order, so
+   tasks are sorted by estimated remote cost (prompt/4 + category cap) descending:
+   whatever overflows the budget guard to paid remote is the cheap remainder
+   (sentiment labels), not 800-word passages.
+
+**Semantic-risk consequence (run D, task t9):** with local calls actually landing,
+category choice became a real decision. The quota repro caught qwen2.5-coder:3b
+answering "how many seconds in a 30-day month" as **720** (nonsense ÷365 route;
+truth 2,592,000) — straight through the 'Answer:'-line verifier. Silent wrong
+locals on factual/math/logic are the run-16 failure class, and kimi answers those
+categories for only ~165-250 tok/task. So the endgame ladder is:
+
+- **R1 (this commit's image default): local-5** — sentiment/ner/summarization
+  (run-18-proven) + debug/codegen (coder model, offline 10/10 & 9/10 EXECUTED);
+  factual/math/logic stay on kimi. Est. ~1.9-2.5k, high gate confidence.
+  Quota-repro validation: run E (stale image, same runner fixes) 9/10 local;
+  run F (this exact image) — see below.
+- **R2: R1 + math/logic answer-only on kimi** (probe: 38→7 / 30→4 completion
+  tokens, correct on samples). Est. ~1.7-2.1k, medium-high confidence.
+- **R3 (moonshot): all-local** (LOCAL_CATEGORIES += factual,math,logic — one env
+  line). Est. <1k, gate coin flip on t9-class misses.
+- **Closer: whatever passed best**, re-saved before the 2026-07-12 22:00 UTC
+  extended deadline (the LAST submission is what counts).
+
+If even R1 washes on the real box (i.e. the box is NOT quota-throttled and local
+was already landing — contradicted by every run's token numbers), the remaining
+lever is R2's trim alone on the anchor config.
 
 ### Smaller-local-model probe (2026-07-12, offline, NOT submitted) — DUD
 

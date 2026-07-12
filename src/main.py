@@ -238,6 +238,17 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
             await solve_remote(task_id, category, prompt, tiers, results)
 
 
+def _remote_cost_estimate(task: dict) -> float:
+    """Rough tokens this task would bill if it leaks to the remote path: prompt
+    tokens (a long summarization passage bills ~1k on its own) plus the category's
+    output cap as the worst-case completion. Used only to ORDER the local queue —
+    a wrong estimate costs nothing but a slightly worse ordering."""
+    prompt = task.get("prompt") or ""
+    category = router.classify(prompt) if isinstance(prompt, str) else None
+    cap = prompts.SPEC[category]["max_tokens"] if category in prompts.SPEC else 300
+    return len(prompt) / 4.0 + cap
+
+
 async def run(tasks: list[dict], results: dict) -> None:
     global LOCAL_ENABLED
     LOCAL_ENABLED = bool(local.LOCAL_CATEGORIES) and local.is_available()
@@ -245,6 +256,14 @@ async def run(tasks: list[dict], results: dict) -> None:
     log("BATCHING_STATUS", enabled=BATCHING_ENABLED)
     tiers = models.build_tiers()
     log("TIERS", **tiers)
+    if LOCAL_ENABLED:
+        # The serialized local queue (LOCAL_LOCK) is the scarce FREE resource, and
+        # task-list order is roughly the order tasks reach it. Bias the free slots
+        # toward the tasks that would bill the most remotely, so whatever overflows
+        # the budget guard onto the paid path is the CHEAP remainder (a sentiment
+        # label), not an 800-word passage. Answers are keyed by task_id, so order
+        # never affects results.json.
+        tasks = sorted(tasks, key=_remote_cost_estimate, reverse=True)
     sem = asyncio.Semaphore(CONCURRENCY)
     pending: list[dict] = []
     jobs = [solve_task(task, tiers, sem, results, pending) for task in tasks

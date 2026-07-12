@@ -39,14 +39,19 @@ RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
 # The harness injects only FIREWORKS_*; these defaults ARE the local-path config.
 # LOCAL_CATEGORIES="" disables local entirely (pure remote = the proven config).
-# ALL-LOCAL experiment (rung 5): every category tries local first, so nearly every
-# task costs zero tokens (target the ~1.5-2.5k leader zone). HIGHEST RISK: factual
-# has no correctness verifier, so a confidently-wrong 3B fact ships to the judge.
-# math/logic are gated by the 'Answer:'-line verifier and fail open to remote.
+# Runner-pin rung R1 (2026-07-12, docs/eval-results.md "Runner-pin rung"): with the
+# thread/num_ctx fixes local calls actually LAND for the first time, so category
+# choice is now a real semantic-risk decision, not a no-op. local-5 = the verified
+# set: sentiment/ner/summarization (run-18-proven 19/19) + debug/codegen (coder
+# model, offline 10/10 debug & 9/10 codegen on EXECUTED assertions). factual/math/
+# logic stay on kimi (~165-250 tok/task, terse): the quota-repro caught qwen2.5-
+# coder:3b answering an easy math word problem confidently WRONG through the
+# format verifier (run D, t9) — the exact silent-miss class that sank run 16.
+# All-local (add factual,math,logic back) is the R3 moonshot, a separate gamble.
 # Anchor for recovery if this drops below the gate: 6c8dcc4 (94.7-100% @ 3.9-4.1k).
 ARG LOCAL_MODEL=qwen2.5-coder:3b
 ENV LOCAL_MODEL=${LOCAL_MODEL}
-ENV LOCAL_CATEGORIES="factual,math,logic,sentiment,ner,summarization,debug,codegen"
+ENV LOCAL_CATEGORIES="sentiment,ner,summarization,debug,codegen"
 # Batching (Phase E) scored a token REGRESSION for this config (run 24: 5,067 vs
 # the 3.9-4.1k anchor) and buys nothing under all-local (almost nothing hits
 # remote to batch). Disable it in the image; the code path stays behind the flag.

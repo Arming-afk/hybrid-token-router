@@ -370,6 +370,18 @@ def test_deadline_writes_partial_results():
     assert rows == [{"task_id": "a", "answer": ""}]
 
 
+def test_local_queue_orders_expensive_remote_tasks_first():
+    # The serialized local queue is the scarce free resource: a long summarization
+    # passage (bills ~its whole length in prompt tokens remotely) must outrank a
+    # one-line sentiment label for the free slots.
+    long_passage = {"prompt": "Summarize this article in 3 sentences: " + "word " * 400}
+    cheap_label = {"prompt": "Classify the sentiment of this review: 'Great phone.'"}
+    assert main._remote_cost_estimate(long_passage) > main._remote_cost_estimate(cheap_label)
+    # Malformed prompts must not crash the estimator (they're dropped before jobs).
+    assert main._remote_cost_estimate({"prompt": None}) == 300
+    assert main._remote_cost_estimate({}) == 300
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

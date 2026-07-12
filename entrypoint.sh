@@ -5,19 +5,27 @@
 # because of the sidecar. The agent starts immediately (60s readiness rule);
 # the model load happens concurrently with the first remote-bound work.
 
+# One serialized caller (main.py's LOCAL_LOCK) — parallel slots would only
+# multiply the KV cache allocation (num_ctx x parallel) on the 4GB box.
+export OLLAMA_NUM_PARALLEL=1
+export OLLAMA_MAX_LOADED_MODELS=1
+
 (ollama serve > /tmp/ollama.log 2>&1 &) || true
 
-# Warm the SAME model main.py will call (LOCAL_MODEL, default matches the Dockerfile
-# bake). Warming the wrong model leaves the first real task to pay the ~57s cold
-# start while holding the serialized local lock — the run-19 starvation trigger.
-LOCAL_MODEL="${LOCAL_MODEL:-qwen2.5-coder:3b}"
+# Warm with the EXACT payload src/local.py builds (same model, same runner
+# options — num_ctx/num_thread). In Ollama, a call whose runner options differ
+# from the loaded runner's forces a full model RELOAD; the old warmup sent no
+# options, so the first real task threw the warm runner away and paid the ~57s
+# cold start while holding the serialized local lock (the run-19 starvation
+# trigger). Building the payload from the same code that makes production calls
+# means the two can never drift apart again.
 (
+  WARMUP_PAYLOAD="$(python -c 'from src import local; print(local.warmup_payload())')"
   i=0
   while [ $i -lt 30 ]; do
     if curl -s http://localhost:11434/api/version > /dev/null 2>&1; then
-      # one tiny generation forces the ~2GB model load now, not on task one
       curl -s http://localhost:11434/api/generate \
-        -d "{\"model\":\"${LOCAL_MODEL}\",\"prompt\":\"hi\",\"stream\":false,\"keep_alive\":\"30m\",\"options\":{\"num_predict\":1}}" \
+        -d "$WARMUP_PAYLOAD" \
         > /dev/null 2>&1 || true
       break
     fi

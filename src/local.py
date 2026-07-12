@@ -9,8 +9,10 @@ the agent behaves exactly like the proven remote-only config).
 Design facts this module leans on (validated by the 100%-at-3753 competitor whose
 architecture this adapts, and sized for the 2 vCPU / 4 GB grading box):
 - qwen2.5:3b on 2 vCPUs generates ~12-30 tok/s; short answers finish in 5-15s.
-- num_ctx 8192 so long summarization passages don't get silently truncated
-  (KV cache cost ~300MB, safe in 4GB).
+- num_ctx is PINNED to one value for the whole run (see NUM_CTX): in Ollama a
+  num_ctx change is a runner reload, and reloads mid-run are how the warmup and
+  run 26's dynamic scheme burned task timeouts. Prompts too long for the pinned
+  window skip local (MAX_PROMPT_CHARS) instead of getting silently truncated.
 - done_reason == "length" means the answer was cut mid-thought: never submit it.
 - Local tokens are free, so local instructions optimize for JUDGE satisfaction,
   not brevity: sentiment keeps its justification, debug keeps the bug sentence.
@@ -31,8 +33,17 @@ MODEL = os.environ.get("LOCAL_MODEL", "qwen2.5:3b")
 # while the same prompt warm took 3.4s. The entrypoint warms the model in the
 # background, but a task can still race it, so the first real call gets a wide
 # budget. Later calls are compute-only: even 870-word passages answer in ~5s.
-FIRST_CALL_TIMEOUT = 60.0
-CALL_TIMEOUT = 15.0
+# 60 -> 90 (2026-07-12 quota-mode A/B): under --cpus=2 QUOTA (vs cpuset pin) the
+# load+first-generation took just over 60s and the first task failed open; 90s
+# absorbed it. One-time cost, guarded by main.py's LOCAL_MIN_REMAINING_SECONDS.
+FIRST_CALL_TIMEOUT = 90.0
+# 15 -> 25 (2026-07-12 quota-mode run C): the quota box generates ~5-13 tok/s, so
+# even a 120-word factual answer needs ~18-20s warm; at 15s the call dies with the
+# answer nearly done — the most expensive failure shape (burned lock time AND paid
+# remote). Short-output categories (sentiment/ner) still finish in 5-10s and never
+# consume the extra budget; the LOCAL_MIN_REMAINING_SECONDS guard bounds the
+# worst case at "overflow goes remote", which is exactly the pre-rung baseline.
+CALL_TIMEOUT = 25.0
 # debug/codegen answer with a full fenced code block (see _CATEGORY_INSTRUCTIONS),
 # a materially longer completion than a sentiment label or an NER line list, even
 # on a short prompt. The base/scaled timeout above is tuned to PROMPT length
@@ -57,8 +68,20 @@ CALL_TIMEOUT = 15.0
 #   time trades against total queue throughput), not free headroom -- do not
 #   raise further without a way to shrink the per-call time too (e.g. a lower
 #   NUM_PREDICT specifically for codegen), which is the next thing to try.
-CODE_CALL_TIMEOUT = 30.0
+# 30 -> 40 base (2026-07-12 quota-mode runs B/C): a math word problem SUCCEEDED at
+# 35.5s when given room (run B) and died at 30.8s when not (run C); logic died at
+# 31.1s. becc4c8's 45/70 regression was measured on the 106-task rehearsal
+# (queue-throughput trade); the judge set is 19 tasks, where the budget guard —
+# not the per-call ceiling — bounds total queue time.
+CODE_CALL_TIMEOUT = 40.0
 CODE_MAX_CALL_TIMEOUT = 55.0
+# math/logic share the code floor/ceiling: their completions are generation-heavy
+# too (brief steps + an 'Answer:' line, ~300-500 chars), and the 2026-07-12
+# quota-mode A/B showed them dying just past the 15s base (math 15.3s, logic
+# 16.1s timed out; a math call that got 35.5s succeeded). Same validated 30/55
+# values as code — becc4c8 proved raising the ceiling further regresses queue
+# throughput, so they join the tier rather than getting their own higher one.
+GENERATION_HEAVY = ("debug", "codegen", "math", "logic")
 # Adaptive per-call ceiling: base + a measured per-KB slope, capped. Long
 # summarization passages get more wall-clock than a one-line sentiment prompt
 # WITHOUT a flat 45s that would let one task hold the serialized LOCAL_LOCK and
@@ -68,17 +91,24 @@ SECONDS_PER_KB = 8.0
 MAX_CALL_TIMEOUT = 40.0
 KEEP_ALIVE = "30m"  # never unload the model mid-run
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
-# num_ctx sizes the KV cache. A flat 8192 costs several hundred MB of the 4 GB
-# grading box's RAM AND slows prompt-eval on every call — even the short
-# factual/math/sentiment prompts that need a fraction of it. Under memory
-# pressure that slowdown pushes local calls past their timeout → fail open to
-# paid remote, which is the leading suspect for why all-local didn't shed tokens
-# (docs: run 25 was a wash). Size it to the prompt instead: 2048 covers a ~6k-char
-# prompt + full generation; long summarization passages get the big window only
-# when they actually need it.
-NUM_CTX_SMALL = 2048
-NUM_CTX_LARGE = 8192
-NUM_CTX_LARGE_CHARS = 5000  # prompts longer than this get the large window
+# num_ctx sizes the KV cache — and in Ollama it is a RUNNER option: any call whose
+# num_ctx differs from the loaded runner's forces a full runner RELOAD (seconds to
+# tens of seconds on this box, spent inside the task's timeout window → LOCAL_FAIL
+# → paid remote). The run-26 dynamic 2048/8192 scheme flapped the runner mid-run,
+# and the entrypoint warmup (which sent no num_ctx at all) loaded a runner that the
+# first production call immediately threw away. Fix: ONE pinned window for every
+# call, and the warmup sends the exact same runner options (see warmup_payload()).
+# 4096 covers ~10k chars of prompt + full generation, at half of 8192's KV cost
+# (~150MB); prompts that can't fit skip local entirely (MAX_PROMPT_CHARS).
+NUM_CTX = int(os.environ.get("LOCAL_NUM_CTX", "4096"))
+MAX_PROMPT_CHARS = 10_000  # beyond this the pinned window could truncate: go remote
+# llama.cpp defaults num_thread to the DETECTED host core count. If the grading
+# box is a CPU-quota-throttled container (not a true 2-core VM), the runner sees
+# the host's many cores, spawns that many threads, and thrashes against the quota
+# — the leading explanation for calls that take ~3.4s on a 2-core pin taking >15s
+# at grading. Pinning to the box's 2 vCPUs is a no-op on a real 2-core VM and a
+# large win under a quota; there is no configuration where it hurts.
+NUM_THREAD = int(os.environ.get("LOCAL_NUM_THREAD", "2"))
 
 # Categories allowed to try local-first. The MODULE default is the proven-safe
 # rung (sentiment,ner,summarization → run 18, 100% @ 4,178); anyone importing
@@ -138,9 +168,13 @@ _CATEGORY_INSTRUCTIONS = {
         "Work through it in brief steps, then end with 'Answer: <value>' on its "
         "own line.\n\n"
     ),
+    # "at most 5 short steps": the unbounded wording made the 3B ramble past its
+    # generation-time budget on the quota box (run D: 41.1s timeout) — the answer
+    # was never too LONG for the judge, just too slow to finish. Bounding steps
+    # bounds wall-clock; local tokens are free either way.
     "logic": (
-        "Reason in brief numbered steps, checking each constraint, then end with "
-        "'Answer: <value>' on its own line.\n\n"
+        "Reason in at most 5 short numbered steps, checking the key constraints, "
+        "then end with 'Answer: <value>' on its own line.\n\n"
     ),
 }
 
@@ -164,31 +198,53 @@ def is_available(timeout: float = 3.0) -> bool:
 
 def _timeout_for(prompt_chars: int, first_call: bool, category: str = "") -> float:
     """Scale the per-call timeout with passage length, bounded. First call also
-    absorbs the model-load cold start. debug/codegen get a higher floor/ceiling
-    (see CODE_CALL_TIMEOUT) because their completions run long regardless of
-    prompt length."""
+    absorbs the model-load cold start. Generation-heavy categories (debug/codegen/
+    math/logic) get a higher floor/ceiling (see CODE_CALL_TIMEOUT) because their
+    completions run long regardless of prompt length."""
     base, ceiling = (
-        (CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT) if category in ("debug", "codegen")
+        (CODE_CALL_TIMEOUT, CODE_MAX_CALL_TIMEOUT) if category in GENERATION_HEAVY
         else (CALL_TIMEOUT, MAX_CALL_TIMEOUT)
     )
     scaled = min(base + SECONDS_PER_KB * prompt_chars / 1024.0, ceiling)
     return max(scaled, FIRST_CALL_TIMEOUT) if first_call else scaled
 
 
+def runner_options() -> dict:
+    """The options that determine Ollama's RUNNER identity. Every call — including
+    the entrypoint warmup — must send exactly these, or Ollama reloads the model."""
+    return {"num_ctx": NUM_CTX, "num_thread": NUM_THREAD}
+
+
+def warmup_payload() -> str:
+    """JSON payload for the entrypoint's warmup call. Built here so the warmup can
+    never drift from what generate() sends (the drift is what made the old warmup
+    useless: no num_ctx → default runner → first real call paid a reload anyway)."""
+    return json.dumps({
+        "model": MODEL,
+        "prompt": "hi",
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {**runner_options(), "num_predict": 1},
+    })
+
+
 def generate(prompt: str, category: str) -> str:
     """Blocking Ollama call (main.py runs it in a thread, serialized — the 2 vCPU
     box effectively processes one local generation at a time anyway)."""
     global _first_call_done
-    timeout = _timeout_for(len(prompt), not _first_call_done, category)
     instruction = _BASE_INSTRUCTION + _CATEGORY_INSTRUCTIONS.get(category, "")
     full_prompt = instruction + prompt
-    num_ctx = NUM_CTX_LARGE if len(full_prompt) > NUM_CTX_LARGE_CHARS else NUM_CTX_SMALL
+    if len(full_prompt) > MAX_PROMPT_CHARS:
+        # Doesn't fit the pinned window; silent truncation would feed the model a
+        # cut passage. Fail open to remote immediately — no lock time burned.
+        raise LocalError(f"prompt {len(full_prompt)} chars > {MAX_PROMPT_CHARS} (pinned num_ctx)")
+    timeout = _timeout_for(len(prompt), not _first_call_done, category)
     payload = {
         "model": MODEL,
         "prompt": full_prompt,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
-        "options": {"temperature": 0, "num_ctx": num_ctx, "num_predict": NUM_PREDICT},
+        "options": {**runner_options(), "temperature": 0, "num_predict": NUM_PREDICT},
     }
     req = urllib.request.Request(
         f"{BASE_URL}/api/generate", data=json.dumps(payload).encode(),
