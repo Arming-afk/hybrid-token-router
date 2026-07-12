@@ -1,0 +1,12 @@
+# Never upload secrets or local artifacts to the deployment.
+.env
+.env.*
+out/
+tests/
+scripts/
+docs/
+__pycache__/
+*.pyc
+.git/
+Dockerfile
+entrypoint.sh

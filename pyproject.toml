@@ -1,0 +1,16 @@
+# Exists for the Vercel demo deployment. Without [tool.vercel], Vercel's Python
+# builder picks src/main.py (the judged batch entrypoint, no web handler) and the
+# deploy fails; the [project] table is required by the builder's `uv lock` step.
+# The judged image still installs from requirements.txt — keep the pin in sync.
+[project]
+name = "hybrid-token-router-demo"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["openai==2.44.0"]
+
+[tool.uv]
+# Demo app, not an installable package: nothing imports it by distribution name.
+package = false
+
+[tool.vercel]
+entrypoint = "api.main:handler"

@@ -1,0 +1,260 @@
+# Generated from public/index.html — regenerate via scratchpad gen_page.py
+# (or copy the file contents into the raw string by hand). Vercel strips
+# public/ from the Python function bundle, so the page ships as code.
+PAGE = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hybrid Token Router — demo</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --panel2: #1f2330; --border: #2a2f3e;
+    --text: #e6e9f0; --dim: #8b93a7; --accent: #7aa2ff;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); height: 100vh;
+    display: flex; flex-direction: column;
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  header {
+    padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border);
+    display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+  }
+  header h1 { font-size: 17px; font-weight: 600; margin-right: auto; }
+  header h1 small { color: var(--dim); font-weight: 400; margin-left: 8px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  .status { font-size: 13px; color: var(--dim); }
+  .tierchips { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; }
+  .tierchips span {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 2px 10px; color: var(--dim);
+  }
+  .tierchips b { color: var(--text); font-weight: 600; }
+  #chat { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 72%; border-radius: 14px; padding: 10px 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .user { align-self: flex-end; background: #2b4bb3; border-bottom-right-radius: 4px; }
+  .bot  { align-self: flex-start; background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .bot.wide { max-width: 92%; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .badge {
+    font-size: 11px; font-weight: 700; letter-spacing: .4px;
+    border-radius: 4px; padding: 2px 8px; color: #10131b; text-transform: uppercase;
+  }
+  .badge.model, .badge.tokens { background: var(--panel2); color: var(--dim); font-weight: 500; text-transform: none; }
+  .badge.esc { background: #facc15; }
+  .cat-factual { background: #a78bfa; } .cat-math { background: #22d3ee; }
+  .cat-sentiment { background: #f472b6; } .cat-summarization { background: #fbbf24; }
+  .cat-ner { background: #34d399; } .cat-debug { background: #f87171; }
+  .cat-logic { background: #60a5fa; } .cat-codegen { background: #a3e635; }
+  .path-deterministic { background: #22c55e; } .path-local { background: #3b82f6; color: #fff; }
+  .path-remote { background: #f97316; } .path-route-only { background: #6b7280; color: #fff; }
+  .path-batch { background: #c084fc; } .path-solo-fallback { background: #fb923c; }
+  .noanswer { color: var(--dim); font-style: italic; }
+  .error { color: #f87171; }
+  details { margin-top: 8px; font-size: 13px; color: var(--dim); }
+  details summary { cursor: pointer; user-select: none; }
+  details ol { margin: 6px 0 6px 20px; }
+  details .kv { margin: 2px 0; }
+  details .kv b { color: var(--text); font-weight: 600; }
+  .batchtask { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+  .batchtask .q { color: var(--dim); font-size: 13px; margin-bottom: 4px; }
+  form { display: flex; gap: 10px; padding: 14px 20px; background: var(--panel); border-top: 1px solid var(--border); align-items: flex-end; }
+  #input, #batchinput {
+    flex: 1; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); padding: 10px 14px; font: inherit; outline: none;
+  }
+  #batchinput { display: none; resize: vertical; min-height: 84px; }
+  #input:focus, #batchinput:focus { border-color: var(--accent); }
+  button {
+    background: var(--accent); color: #10131b; border: 0; border-radius: 10px;
+    padding: 10px 22px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  .mode { display: flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; user-select: none; white-space: nowrap; padding-bottom: 10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Hybrid Token Router <small>routing demo — ask anything</small></h1>
+  <span class="status" id="st-remote"><span class="dot" style="background:#6b7280"></span>Fireworks</span>
+  <span class="status" id="st-ollama"><span class="dot" style="background:#6b7280"></span>Ollama</span>
+  <div class="tierchips" id="tiers"></div>
+</header>
+<div id="chat"></div>
+<form id="form">
+  <input id="input" placeholder="Ask a question… e.g. What is 15% of 240?" autocomplete="off" autofocus>
+  <textarea id="batchinput" placeholder="One question per line — the demo groups them into per-tier chunks and answers each chunk with ONE model call (Phase E; Ctrl+Enter to send)"></textarea>
+  <label class="mode"><input type="checkbox" id="batchmode"> batch</label>
+  <button id="send" type="submit">Send</button>
+</form>
+<script>
+const chat = document.getElementById("chat");
+const form = document.getElementById("form");
+const input = document.getElementById("input");
+const batchinput = document.getElementById("batchinput");
+const batchmode = document.getElementById("batchmode");
+const send = document.getElementById("send");
+
+function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+function scroll() { chat.scrollTop = chat.scrollHeight; }
+
+fetch("/api/status").then(r => r.json()).then(s => {
+  const dot = (on) => `<span class="dot" style="background:${on ? "#22c55e" : "#6b7280"}"></span>`;
+  if (s.route_only) {
+    document.getElementById("st-remote").innerHTML = dot(false) + "route-only mode — no model calls";
+    document.getElementById("st-ollama").innerHTML = "";
+  } else {
+    document.getElementById("st-remote").innerHTML = dot(s.remote) + "Fireworks " + (s.remote ? "connected" : "off");
+    document.getElementById("st-ollama").innerHTML = dot(s.ollama) + "Ollama " + (s.ollama ? "up" : "off");
+  }
+  const chips = document.getElementById("tiers");
+  for (const [tier, model] of Object.entries(s.tiers)) {
+    const chip = el("span"); chip.innerHTML = `<b>${tier}</b> ${model}`;
+    chips.appendChild(chip);
+  }
+  const lc = el("span"); lc.innerHTML = `<b>LOCAL</b> ${s.local_categories.join(", ") || "—"}`;
+  chips.appendChild(lc);
+  const bc = el("span");
+  bc.innerHTML = `<b>BATCH</b> Phase E — ${s.image_batching ? "ON in image" : "off in image (run 24), demo via ☑ batch"}`;
+  chips.appendChild(bc);
+});
+
+batchmode.addEventListener("change", () => {
+  const on = batchmode.checked;
+  input.style.display = on ? "none" : "";
+  // Explicit "block": clearing the inline style would fall back to the
+  // stylesheet's `#batchinput { display: none }` and hide BOTH fields.
+  batchinput.style.display = on ? "block" : "none";
+  (on ? batchinput : input).focus();
+});
+batchinput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit();
+});
+
+function renderBot(d) {
+  const bubble = el("div", "msg bot");
+  if (d.error && !d.category) {           // hard failure before routing
+    bubble.appendChild(el("div", "error", d.error));
+    return bubble;
+  }
+  const badges = el("div", "badges");
+  badges.appendChild(el("span", "badge cat-" + d.category, d.category));
+  badges.appendChild(el("span", "badge path-" + d.path, d.path));
+  if (d.path === "deterministic") {
+    badges.appendChild(el("span", "badge model", "in-process solver · 0 tokens"));
+  } else if (d.path === "local") {
+    badges.appendChild(el("span", "badge model", d.engine + " · 0 tokens"));
+  } else if (d.model) {
+    badges.appendChild(el("span", "badge model", d.tier + " · " + d.model));
+  }
+  if (d.escalated) badges.appendChild(el("span", "badge esc", "→ " + d.escalated.to_tier));
+  if (d.usage) badges.appendChild(el("span", "badge tokens",
+      "↑" + d.usage.prompt_tokens + " ↓" + d.usage.completion_tokens + " tokens"));
+  bubble.appendChild(badges);
+
+  if (d.answer) {
+    bubble.appendChild(el("div", null, d.answer));
+  } else if (d.path === "route-only") {
+    bubble.appendChild(el("div", "noanswer",
+      "Routing decision — production sends this to " + d.model +
+      " (" + d.tier + ", max_tokens=" + d.spec.max_tokens + ")."));
+  } else {
+    bubble.appendChild(el("div", "error", d.error || "no answer"));
+  }
+
+  const details = el("details");
+  details.appendChild(el("summary", null, "details"));
+  const steps = el("ol");
+  for (const s of d.steps || []) steps.appendChild(el("li", null, s));
+  details.appendChild(steps);
+  const kv = (k, v) => { const row = el("div", "kv"); row.innerHTML = "<b>" + k + ":</b> "; row.appendChild(document.createTextNode(v)); details.appendChild(row); };
+  kv("classifier", d.classifier);
+  if (d.spec) { kv("instruction", d.spec.instruction); kv("max_tokens", d.spec.max_tokens); }
+  if (d.local) kv("local verify", (d.local.verify_ok ? "passed" : "rejected") + " — " + d.local.verify_reason);
+  if (d.escalated) kv("escalation", d.escalated.to_tier + " (" + d.escalated.model + ") — " + d.escalated.reason);
+  kv("timing", Object.entries(d.timings_ms).map(([k, v]) => k + " " + v + "ms").join(", "));
+  bubble.appendChild(details);
+  return bubble;
+}
+
+function renderBatch(d) {
+  const bubble = el("div", "msg bot wide");
+  if (d.error) { bubble.appendChild(el("div", "error", d.error)); return bubble; }
+  const badges = el("div", "badges");
+  badges.appendChild(el("span", "badge path-batch", "batch mode"));
+  badges.appendChild(el("span", "badge model", d.summary));
+  badges.appendChild(el("span", "badge tokens",
+      "↑" + d.usage.prompt_tokens + " ↓" + d.usage.completion_tokens + " tokens total"));
+  bubble.appendChild(badges);
+  for (const c of d.chunks) {
+    if (c.solo) continue;
+    const line = el("div", "noanswer",
+      "chunk [" + c.task_ids.join(", ") + "] → 1 call on " + c.tier + " (" + c.model + ")" +
+      (c.usage ? " · ↑" + c.usage.prompt_tokens + " ↓" + c.usage.completion_tokens : "") +
+      (c.elapsed_ms ? " · " + c.elapsed_ms + "ms" : "") +
+      (c.error ? " · FAILED: " + c.error : ""));
+    bubble.appendChild(line);
+  }
+  for (const t of d.tasks) {
+    const box = el("div", "batchtask");
+    box.appendChild(el("div", "q", t.task_id + " · " + t.prompt));
+    const b = el("div", "badges");
+    if (t.category) b.appendChild(el("span", "badge cat-" + t.category, t.category));
+    b.appendChild(el("span", "badge path-" + t.path, t.path));
+    if (t.source) b.appendChild(el("span", "badge model", t.source));
+    box.appendChild(b);
+    if (t.answer) box.appendChild(el("div", null, t.answer));
+    else box.appendChild(el("div", "noanswer", t.verify || "route shown, not executed"));
+    bubble.appendChild(box);
+  }
+  const details = el("details");
+  details.appendChild(el("summary", null, "details"));
+  const steps = el("ol");
+  for (const s of d.steps || []) steps.appendChild(el("li", null, s));
+  details.appendChild(steps);
+  bubble.appendChild(details);
+  return bubble;
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const isBatch = batchmode.checked;
+  let url, payload, shown;
+  if (isBatch) {
+    const lines = batchinput.value.split("\n").map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    url = "/api/batch"; payload = { prompts: lines }; shown = lines.join("\n");
+    batchinput.value = "";
+  } else {
+    const prompt = input.value.trim();
+    if (!prompt) return;
+    url = "/api/ask"; payload = { prompt }; shown = prompt;
+    input.value = "";
+  }
+  chat.appendChild(el("div", "msg user", shown));
+  input.disabled = true; batchinput.disabled = true; send.disabled = true;
+  const pending = el("div", "msg bot noanswer", isBatch ? "batching…" : "routing…");
+  chat.appendChild(pending); scroll();
+  try {
+    const r = await fetch(url, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload) });
+    const data = await r.json();
+    chat.replaceChild(isBatch ? renderBatch(data) : renderBot(data), pending);
+  } catch (err) {
+    pending.className = "msg bot error"; pending.textContent = "request failed: " + err;
+  }
+  input.disabled = false; batchinput.disabled = false; send.disabled = false;
+  (isBatch ? batchinput : input).focus(); scroll();
+});
+</script>
+</body>
+</html>
+"""
