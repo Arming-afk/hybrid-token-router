@@ -612,6 +612,21 @@ burned. Local levers now exhausted: batching (regression), num-predict
 (inconclusive), all-local (wash), smaller-model (dud). Ceiling stands at the
 anchor's ~3,900-4,100 @ 94.7-100%.
 
+### Deterministic logic solver (2026-07-12, merged to main) — safe 0-token polish
+
+Added `router.deterministic_logic_answer`: solves single-dimension transitive-
+ordering puzzles ("A is older than B, B older than C — who is the youngest?") by
+building the greater-than edges, taking the transitive closure, requiring a clean
+TOTAL order (rank counts must be exactly 0..N-1), and returning the unique
+extreme. Wired into `solve_task` before classification (like the arithmetic
+solver), so it costs zero tokens AND is immune to model error. Hard self-gating:
+mixed dimensions, broken chains, syllogisms, truth-teller/conditional puzzles all
+return None → normal path. On the eval logic set it fired on 2/10 (both correct),
+**zero misfires** on the other 8 (which correctly deferred). Value is mainly
+accuracy robustness on fresh ordering puzzles (deterministic, can't be fooled);
+the token saving is below the ~±250 noise floor so it won't move the ranking.
+Can't hurt — a pure-safe addition. 84 tests pass (incl. test_logic_solver).
+
 Run 18 lessons (2026-07-10):
 - **First 100% (19/19), 4,178 tokens — new endgame anchor `7bb50c4`.**
 - **The −21 anomaly**: +summarization was predicted to shed several hundred
