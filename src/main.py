@@ -216,6 +216,14 @@ async def solve_task(task: dict, tiers: dict, sem: asyncio.Semaphore, results: d
             log("LOCAL", task_id=task_id, solver="deterministic-arithmetic")
             results[task_id] = det
             return
+        # Transitive-ordering logic puzzles ("A older than B ... who is youngest?")
+        # answer deterministically for zero tokens AND immune to model error; the
+        # solver self-gates to a unique extreme over a clean total order, else None.
+        logic = router.deterministic_logic_answer(prompt)
+        if logic is not None:
+            log("LOCAL", task_id=task_id, solver="deterministic-logic")
+            results[task_id] = logic
+            return
         category = router.classify(prompt)
         if category is None:
             category = await llm_classify(task_id, prompt, tiers)

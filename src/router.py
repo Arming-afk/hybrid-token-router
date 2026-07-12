@@ -376,6 +376,87 @@ def deterministic_math_answer(prompt: str) -> str | None:
     return f"Answer: {_format_number(value)}"
 
 
+# --- Deterministic logic: transitive-ordering puzzles ---------------------------
+# Only the clean "A is <comparative> than B ... who is the <superlative>?" shape,
+# on ONE consistent dimension, resolving to a UNIQUE extreme over a TOTAL order.
+# Anything else — mixed dimensions, a broken chain, a syllogism, a truth-teller
+# puzzle, a conditional — returns None and pays the normal path. A wrong solver
+# answer would cost accuracy, so every branch here is biased hard toward None.
+#
+# Each dimension: (comparative words meaning LEFT > RIGHT, comparatives meaning
+# LEFT < RIGHT, superlatives asking for the MAX, superlatives asking for the MIN).
+_ORDER_DIMS = [
+    ({"older", "elder"}, {"younger"}, {"oldest", "eldest"}, {"youngest"}),
+    ({"taller"}, {"shorter"}, {"tallest"}, {"shortest"}),
+    ({"heavier"}, {"lighter"}, {"heaviest"}, {"lightest"}),
+    ({"bigger", "larger"}, {"smaller"}, {"biggest", "largest"}, {"smallest"}),
+    ({"faster"}, {"slower"}, {"fastest"}, {"slowest"}),
+    ({"richer", "wealthier"}, {"poorer"}, {"richest", "wealthiest"}, {"poorest"}),
+    ({"stronger"}, {"weaker"}, {"strongest"}, {"weakest"}),
+]
+_COMPARE_RE = re.compile(
+    r"\b([A-Z][a-z]*)\s+(?:is|was|comes?|finished|ran|scored)?\s*"
+    r"(older|elder|younger|taller|shorter|heavier|lighter|bigger|larger|smaller|"
+    r"faster|slower|richer|wealthier|poorer|stronger|weaker)\s+than\s+([A-Z][a-z]*)\b")
+_SUPERLATIVE_RE = re.compile(
+    r"\bwho\b.*?\b(oldest|eldest|youngest|tallest|shortest|heaviest|lightest|"
+    r"biggest|largest|smallest|fastest|slowest|richest|wealthiest|poorest|"
+    r"strongest|weakest)\b", re.I)
+
+
+def deterministic_logic_answer(prompt: str) -> str | None:
+    """Solve a single-dimension transitive-ordering puzzle, else None."""
+    text = prompt or ""
+    sup = _SUPERLATIVE_RE.search(text)
+    pairs = _COMPARE_RE.findall(text)
+    if not sup or not pairs:
+        return None
+    superlative = sup.group(1).lower()
+
+    # The one dimension must be consistent across every comparison AND the question.
+    dim = next((d for d in _ORDER_DIMS
+                if superlative in d[2] or superlative in d[3]), None)
+    if dim is None:
+        return None
+    greater_w, lesser_w, max_super, _min_super = dim
+    want_max = superlative in max_super
+
+    # Build "greater-than" edges (winner > loser) from each comparison.
+    edges: list[tuple[str, str]] = []
+    people: set[str] = set()
+    for left, comp, right in pairs:
+        comp = comp.lower()
+        if comp in greater_w:
+            edges.append((left, right))
+        elif comp in lesser_w:
+            edges.append((right, left))
+        else:
+            return None  # comparison on a different dimension → bail
+        people.update((left, right))
+
+    # Transitive closure, then require a TOTAL order: the "greater-than" counts
+    # must be exactly the permutation 0..N-1 (a unique rank for everyone).
+    n = len(people)
+    if n < 2:
+        return None
+    greater_than: dict[str, set[str]] = {p: set() for p in people}
+    for a, b in edges:
+        greater_than[a].add(b)
+    for _ in range(n):  # propagate reachability to a fixed point
+        for a in people:
+            for b in list(greater_than[a]):
+                greater_than[a] |= greater_than[b]
+    counts = {p: len(greater_than[p]) for p in people}
+    if sorted(counts.values()) != list(range(n)):
+        return None  # not a clean total order → ambiguous, defer
+
+    target_rank = n - 1 if want_max else 0
+    winners = [p for p, c in counts.items() if c == target_rank]
+    if len(winners) != 1:
+        return None
+    return winners[0]
+
+
 LETTER_TO_CATEGORY = {
     "A": "factual",
     "B": "math",
