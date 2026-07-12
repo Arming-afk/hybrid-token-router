@@ -39,11 +39,13 @@ RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 
 # The harness injects only FIREWORKS_*; these defaults ARE the local-path config.
 # LOCAL_CATEGORIES="" disables local entirely (pure remote = the proven config).
-# Bisect ladder: run 17 (sentiment,ner) 17/19; run 18 (+summarization) 100% @ 4,178.
-# This rung adds debug,codegen on the coder model — the ~1k lever toward sub-3k,
-# gated on Track B's offline execution eval + the run-19 lock-starvation fix.
+# ALL-LOCAL experiment (rung 5): every category tries local first, so nearly every
+# task costs zero tokens (target the ~1.5-2.5k leader zone). HIGHEST RISK: factual
+# has no correctness verifier, so a confidently-wrong 3B fact ships to the judge.
+# math/logic are gated by the 'Answer:'-line verifier and fail open to remote.
+# Anchor for recovery if this drops below the gate: 6c8dcc4 (94.7-100% @ 3.9-4.1k).
 ARG LOCAL_MODEL=qwen2.5-coder:3b
 ENV LOCAL_MODEL=${LOCAL_MODEL}
-ENV LOCAL_CATEGORIES="sentiment,ner,summarization,debug,codegen"
+ENV LOCAL_CATEGORIES="factual,math,logic,sentiment,ner,summarization,debug,codegen"
 
 ENTRYPOINT ["./entrypoint.sh"]

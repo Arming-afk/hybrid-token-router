@@ -95,6 +95,15 @@ def test_sentence_counter_ignores_abbreviations():
     assert verify(prompt, "summarization", ok)[0] is True
 
 
+def test_math_logic_require_an_answer_line():
+    # All-local rung: math/logic can't be correctness-checked, but the verifier
+    # must still gate on the instructed 'Answer:' contract and fail open otherwise.
+    assert verify("What is 12% of 50?", "math", "12% of 50 is 6.\nAnswer: 6")[0] is True
+    assert verify("Who sits left?", "logic", "Step 1: ...\nAnswer: Carol")[0] is True
+    assert verify("What is 12% of 50?", "math", "Let me think about it carefully.")[0] is False
+    assert verify("Who sits left?", "logic", "Step 1: consider the clues.")[0] is False
+
+
 def test_code_answers_must_parse_and_contain_requested_function():
     prompt = "Write a Python function called 'reverse_string' that reverses a string."
     good = "```python\ndef reverse_string(s):\n    return s[::-1]\n```"

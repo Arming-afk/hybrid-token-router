@@ -116,6 +116,21 @@ _CATEGORY_INSTRUCTIONS = {
         "Give the complete working code in one fenced code block, then at most one "
         "short sentence. No introduction.\n\n"
     ),
+    # factual/math/logic added for the all-local rung. Wording mirrors the proven
+    # remote SPEC so a local answer meets the same judge contract; math/logic MUST
+    # end with an 'Answer:' line so the verifier can gate them (a factual answer
+    # cannot be verified for correctness — that is the accepted risk of this rung).
+    "factual": (
+        "Give a correct, clear, self-contained answer in under 120 words.\n\n"
+    ),
+    "math": (
+        "Work through it in brief steps, then end with 'Answer: <value>' on its "
+        "own line.\n\n"
+    ),
+    "logic": (
+        "Reason in brief numbered steps, checking each constraint, then end with "
+        "'Answer: <value>' on its own line.\n\n"
+    ),
 }
 
 
@@ -307,6 +322,17 @@ def verify(prompt: str, category: str, answer: str) -> tuple[bool, str]:
             opening = _norm(" ".join(answer_words[:15]))
             if opening and opening in _norm(prompt):
                 return False, "answer echoes the source verbatim"
+    elif category in ("math", "logic"):
+        # Can't verify correctness, but CAN require the instructed contract: an
+        # 'Answer:' line carrying a real value. A local answer missing it (the 3B
+        # rambled or ran out) fails open to the remote tier rather than shipping a
+        # half-answer. Pure-arithmetic math never reaches here — main.py's
+        # deterministic solver answers it for zero tokens first.
+        answer_line = re.search(r"(?im)^\s*answer\s*:\s*(\S.*)$", text)
+        if not answer_line:
+            return False, "no 'Answer:' line"
+        if not re.search(r"[0-9A-Za-z]", answer_line.group(1)):
+            return False, "empty 'Answer:' value"
     elif category in ("debug", "codegen"):
         ok, reason = _code_ok(prompt, text, is_debug=(category == "debug"))
         if not ok:
