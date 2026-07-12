@@ -68,6 +68,17 @@ SECONDS_PER_KB = 8.0
 MAX_CALL_TIMEOUT = 40.0
 KEEP_ALIVE = "30m"  # never unload the model mid-run
 NUM_PREDICT = 450  # generation cap: bounds CPU time; length-hits escalate instead
+# num_ctx sizes the KV cache. A flat 8192 costs several hundred MB of the 4 GB
+# grading box's RAM AND slows prompt-eval on every call — even the short
+# factual/math/sentiment prompts that need a fraction of it. Under memory
+# pressure that slowdown pushes local calls past their timeout → fail open to
+# paid remote, which is the leading suspect for why all-local didn't shed tokens
+# (docs: run 25 was a wash). Size it to the prompt instead: 2048 covers a ~6k-char
+# prompt + full generation; long summarization passages get the big window only
+# when they actually need it.
+NUM_CTX_SMALL = 2048
+NUM_CTX_LARGE = 8192
+NUM_CTX_LARGE_CHARS = 5000  # prompts longer than this get the large window
 
 # Categories allowed to try local-first. The MODULE default is the proven-safe
 # rung (sentiment,ner,summarization → run 18, 100% @ 4,178); anyone importing
@@ -170,12 +181,14 @@ def generate(prompt: str, category: str) -> str:
     global _first_call_done
     timeout = _timeout_for(len(prompt), not _first_call_done, category)
     instruction = _BASE_INSTRUCTION + _CATEGORY_INSTRUCTIONS.get(category, "")
+    full_prompt = instruction + prompt
+    num_ctx = NUM_CTX_LARGE if len(full_prompt) > NUM_CTX_LARGE_CHARS else NUM_CTX_SMALL
     payload = {
         "model": MODEL,
-        "prompt": instruction + prompt,
+        "prompt": full_prompt,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
-        "options": {"temperature": 0, "num_ctx": 8192, "num_predict": NUM_PREDICT},
+        "options": {"temperature": 0, "num_ctx": num_ctx, "num_predict": NUM_PREDICT},
     }
     req = urllib.request.Request(
         f"{BASE_URL}/api/generate", data=json.dumps(payload).encode(),
