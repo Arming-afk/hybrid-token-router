@@ -47,5 +47,9 @@ RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 ARG LOCAL_MODEL=qwen2.5-coder:3b
 ENV LOCAL_MODEL=${LOCAL_MODEL}
 ENV LOCAL_CATEGORIES="factual,math,logic,sentiment,ner,summarization,debug,codegen"
+# Batching (Phase E) scored a token REGRESSION for this config (run 24: 5,067 vs
+# the 3.9-4.1k anchor) and buys nothing under all-local (almost nothing hits
+# remote to batch). Disable it in the image; the code path stays behind the flag.
+ENV BATCHING_ENABLED="false"
 
 ENTRYPOINT ["./entrypoint.sh"]
